@@ -73,6 +73,7 @@ function pickMonster(floor) {
   const isBossFloor = floor % 5 === 0;
   const pool = isBossFloor ? BOSS_TYPES : MONSTER_TYPES;
   const base = pool[rand(0, pool.length - 1)];
+
   const hpScale = isBossFloor ? 1 + (floor - 1) * 0.22 : 1 + (floor - 1) * 0.18;
   const attackScale = isBossFloor ? 1 + (floor - 1) * 0.16 : 1 + (floor - 1) * 0.12;
   const rewardScale = isBossFloor ? 1 + (floor - 1) * 0.2 : 1 + (floor - 1) * 0.15;
@@ -102,9 +103,11 @@ function createDungeon(floor) {
     const bossY = Math.max(1, GRID_SIZE - 2);
     monsters[key(bossX, bossY)] = pickMonster(floor);
 
-    for (let y = 0; y < GRID_SIZE; y += 1) {
-      for (let x = 0; x < GRID_SIZE; x += 1) {
-        if ((x === 0 && y === 0) || (x === exit.x && y === exit.y) || (x === bossX && y === bossY)) continue;
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        if (x === 0 && y === 0) continue;
+        if (x === exit.x && y === exit.y) continue;
+        if (x === bossX && y === bossY) continue;
         const roll = Math.random();
         if (roll < 0.14) treasures[key(x, y)] = rand(12, 24) + floor * 3;
         else if (roll < 0.2) fountains[key(x, y)] = rand(10, 18) + floor * 2;
@@ -112,9 +115,10 @@ function createDungeon(floor) {
       }
     }
   } else {
-    for (let y = 0; y < GRID_SIZE; y += 1) {
-      for (let x = 0; x < GRID_SIZE; x += 1) {
-        if ((x === 0 && y === 0) || (x === exit.x && y === exit.y)) continue;
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        if (x === 0 && y === 0) continue;
+        if (x === exit.x && y === exit.y) continue;
         const roll = Math.random();
         if (roll < 0.24) monsters[key(x, y)] = pickMonster(floor);
         else if (roll < 0.38) treasures[key(x, y)] = rand(8, 18) + floor * 2;
@@ -164,7 +168,14 @@ function ProgressBar({ value, max }) {
 
 function StatBox({ label, value }) {
   return (
-    <div style={{ background: "#111827", border: "1px solid #374151", borderRadius: 14, padding: 12 }}>
+    <div
+      style={{
+        background: "#111827",
+        border: "1px solid #374151",
+        borderRadius: 14,
+        padding: 12,
+      }}
+    >
       <div style={{ color: "#9ca3af", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>{value}</div>
     </div>
@@ -203,8 +214,6 @@ export default function App() {
   const [battle, setBattle] = useState(null);
   const [gameOver, setGameOver] = useState(false);
   const [showLog, setShowLog] = useState(true);
-  const [showTitlePanel, setShowTitlePanel] = useState(false);
-  const [showHeroPanel, setShowHeroPanel] = useState(false);
   const logContainerRef = useRef(null);
 
   const appendLog = useCallback((text, type = "info") => {
@@ -229,8 +238,6 @@ export default function App() {
     setBattle(null);
     setGameOver(false);
     setShowLog(true);
-    setShowTitlePanel(false);
-    setShowHeroPanel(false);
     setLog([
       { text: `You enter Floor 1 as the ${baseHero.name}.`, type: "info" },
       { text: "Find treasure, survive monsters, and reach the exit.", type: "info" },
@@ -260,114 +267,125 @@ export default function App() {
     return h;
   };
 
-  const triggerTile = useCallback((x, y) => {
-    const k = key(x, y);
-    const kind = tileType(x, y, dungeon);
+  const triggerTile = useCallback(
+    (x, y) => {
+      const k = key(x, y);
+      const kind = tileType(x, y, dungeon);
 
-    if (kind === "monster") {
-      setBattle({ monster: dungeon.monsters[k], tileKey: k });
-      appendLog(
-        dungeon.monsters[k].isBoss
-          ? `Boss encounter! ${dungeon.monsters[k].name} blocks your path!`
-          : `A ${dungeon.monsters[k].name} appears!`,
-        dungeon.monsters[k].isBoss ? "danger" : "enemy"
-      );
-      return;
-    }
-
-    if (kind === "treasure") {
-      const amount = dungeon.treasures[k];
-      setHero((h) => ({ ...h, gold: h.gold + amount }));
-      setDungeon((d) => {
-        const next = { ...d, treasures: { ...d.treasures } };
-        delete next.treasures[k];
-        return next;
-      });
-      appendLog(`You found ${amount} gold in a dusty chest.`, "loot");
-      return;
-    }
-
-    if (kind === "fountain") {
-      const heal = dungeon.fountains[k];
-      setHero((h) => ({ ...h, hp: Math.min(h.maxHp, h.hp + heal) }));
-      setDungeon((d) => {
-        const next = { ...d, fountains: { ...d.fountains } };
-        delete next.fountains[k];
-        return next;
-      });
-      appendLog(`A glowing fountain restores ${heal} HP.`, "heal");
-      return;
-    }
-
-    if (kind === "trap") {
-      const trapDodged = Math.random() < (hero?.id === "rogue" ? 0.65 : 0.35);
-
-      if (trapDodged) {
-        const dodgeMessages = [
-          "You narrowly avoid a hidden spring trap.",
-          "A dart whistles past your face and embeds itself in the wall.",
-          "You hear a click beneath your foot but leap away just in time.",
-          "A spike shoots up from the floor where you just stood.",
-          "A trap triggers, but luck is on your side today.",
-        ];
-        appendLog(dodgeMessages[rand(0, dodgeMessages.length - 1)], "warning");
-      } else {
-        const damage = dungeon.traps[k];
-        let defeated = false;
-        setHero((h) => {
-          const nextHp = Math.max(0, h.hp - damage);
-          defeated = nextHp <= 0;
-          return { ...h, hp: nextHp };
-        });
-        appendLog(`A trap springs and hits you for ${damage} damage!`, "danger");
-        if (defeated) {
-          setBattle(null);
-          setGameOver(true);
-          appendLog("The trap proves fatal. You collapse in the dungeon.", "danger");
-        }
+      if (kind === "monster") {
+        setBattle({ monster: dungeon.monsters[k], tileKey: k });
+        appendLog(
+          dungeon.monsters[k].isBoss
+            ? `Boss encounter! ${dungeon.monsters[k].name} blocks your path!`
+            : `A ${dungeon.monsters[k].name} appears!`,
+          dungeon.monsters[k].isBoss ? "danger" : "enemy"
+        );
+        return;
       }
 
-      setDungeon((d) => {
-        const next = { ...d, traps: { ...d.traps } };
-        delete next.traps[k];
-        return next;
-      });
-      return;
-    }
+      if (kind === "treasure") {
+        const amount = dungeon.treasures[k];
+        setHero((h) => ({ ...h, gold: h.gold + amount }));
+        setDungeon((d) => {
+          const next = { ...d, treasures: { ...d.treasures } };
+          delete next.treasures[k];
+          return next;
+        });
+        appendLog(`You found ${amount} gold in a dusty chest.`, "loot");
+        return;
+      }
 
-    if (kind === "exit") {
-      const nextFloor = floor + 1;
-      setFloor(nextFloor);
-      setDungeon(createDungeon(nextFloor));
-      setPos(START_POS);
-      appendLog(
-        nextFloor % 5 === 0
-          ? `You descend to Floor ${nextFloor}. A boss lurks in the darkness...`
-          : `You descend to Floor ${nextFloor}. The dungeon grows darker.`,
-        nextFloor % 5 === 0 ? "danger" : "info"
-      );
-      return;
-    }
+      if (kind === "fountain") {
+        const heal = dungeon.fountains[k];
+        setHero((h) => ({ ...h, hp: Math.min(h.maxHp, h.hp + heal) }));
+        setDungeon((d) => {
+          const next = { ...d, fountains: { ...d.fountains } };
+          delete next.fountains[k];
+          return next;
+        });
+        appendLog(`A glowing fountain restores ${heal} HP.`, "heal");
+        return;
+      }
 
-    const flavor = [
-      "The corridor is eerily quiet.",
-      "You hear distant dripping water echo through the halls.",
-      "A cold breeze brushes past you.",
-      "The shadows seem to shift as you move forward.",
-      "Your footsteps echo ominously in the darkness.",
-    ];
-    appendLog(flavor[rand(0, flavor.length - 1)], "info");
-  }, [appendLog, dungeon, floor, hero]);
+      if (kind === "trap") {
+        const trapDodged = Math.random() < (hero?.id === "rogue" ? 0.65 : 0.35);
 
-  const move = useCallback((dx, dy) => {
-    if (battle || gameOver || !hero) return;
-    const nx = clamp(pos.x + dx, 0, GRID_SIZE - 1);
-    const ny = clamp(pos.y + dy, 0, GRID_SIZE - 1);
-    if (nx === pos.x && ny === pos.y) return;
-    setPos({ x: nx, y: ny });
-    revealTile(nx, ny);
-    triggerTile(nx, ny);
-  }, [battle, gameOver, hero, pos, triggerTile]);
+        if (trapDodged) {
+          const dodgeMessages = [
+            "You narrowly avoid a hidden spring trap.",
+            "A dart whistles past your face and embeds itself in the wall.",
+            "You hear a click beneath your foot but leap away just in time.",
+            "A spike shoots up from the floor where you just stood.",
+            "A trap triggers, but luck is on your side today.",
+          ];
+          appendLog(dodgeMessages[rand(0, dodgeMessages.length - 1)], "warning");
+        } else {
+          const damage = dungeon.traps[k];
+          let defeated = false;
+
+          setHero((h) => {
+            const nextHp = Math.max(0, h.hp - damage);
+            defeated = nextHp <= 0;
+            return { ...h, hp: nextHp };
+          });
+
+          appendLog(`A trap springs and hits you for ${damage} damage!`, "danger");
+
+          if (defeated) {
+            setBattle(null);
+            setGameOver(true);
+            appendLog("The trap proves fatal. You collapse in the dungeon.", "danger");
+          }
+        }
+
+        setDungeon((d) => {
+          const next = { ...d, traps: { ...d.traps } };
+          delete next.traps[k];
+          return next;
+        });
+        return;
+      }
+
+      if (kind === "exit") {
+        const nextFloor = floor + 1;
+        setFloor(nextFloor);
+        setDungeon(createDungeon(nextFloor));
+        setPos(START_POS);
+        appendLog(
+          nextFloor % 5 === 0
+            ? `You descend to Floor ${nextFloor}. A boss lurks in the darkness...`
+            : `You descend to Floor ${nextFloor}. The dungeon grows darker.`,
+          nextFloor % 5 === 0 ? "danger" : "info"
+        );
+        return;
+      }
+
+      const flavor = [
+        "The corridor is eerily quiet.",
+        "You hear distant dripping water echo through the halls.",
+        "A cold breeze brushes past you.",
+        "The shadows seem to shift as you move forward.",
+        "Your footsteps echo ominously in the darkness.",
+      ];
+      appendLog(flavor[rand(0, flavor.length - 1)], "info");
+    },
+    [appendLog, dungeon, floor, hero]
+  );
+
+  const move = useCallback(
+    (dx, dy) => {
+      if (battle || gameOver || !hero) return;
+
+      const nx = clamp(pos.x + dx, 0, GRID_SIZE - 1);
+      const ny = clamp(pos.y + dy, 0, GRID_SIZE - 1);
+      if (nx === pos.x && ny === pos.y) return;
+
+      setPos({ x: nx, y: ny });
+      revealTile(nx, ny);
+      triggerTile(nx, ny);
+    },
+    [battle, gameOver, hero, pos, triggerTile]
+  );
 
   useEffect(() => {
     const onKey = (e) => {
@@ -378,12 +396,15 @@ export default function App() {
       if (k === "arrowleft" || k === "a") move(-1, 0);
       if (k === "arrowright" || k === "d") move(1, 0);
     };
+
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [move, screen]);
 
   useEffect(() => {
-    if (logContainerRef.current) logContainerRef.current.scrollTop = 0;
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = 0;
+    }
   }, [log, showLog]);
 
   const heroAttack = (type) => {
@@ -408,10 +429,12 @@ export default function App() {
         appendLog(`Your special is on cooldown (${workingHero.specialCooldown} turns).`, "warning");
         return;
       }
+
       let power = 0;
       if (workingHero.id === "warrior") power = 6;
       if (workingHero.id === "rogue") power = 8;
       if (workingHero.id === "mage") power = 10 + workingHero.magic;
+
       const dmg = battleDamage(Math.max(workingHero.attack, workingHero.magic), workingMonster.defense, power);
       workingMonster.hp -= dmg;
       workingHero.specialCooldown = 3;
@@ -444,7 +467,11 @@ export default function App() {
     if (workingMonster.hp <= 0) {
       const gainedGold = workingMonster.gold;
       const gainedXp = workingMonster.xp;
-      const leveledHero = checkLevelUp({ ...workingHero, gold: workingHero.gold + gainedGold, xp: workingHero.xp + gainedXp });
+      const leveledHero = checkLevelUp({
+        ...workingHero,
+        gold: workingHero.gold + gainedGold,
+        xp: workingHero.xp + gainedXp,
+      });
       setHero(leveledHero);
       setDungeon((d) => {
         const next = { ...d, monsters: { ...d.monsters } };
@@ -506,8 +533,13 @@ export default function App() {
         appendLog("You are already at full health.", "info");
         return;
       }
+
       const heal = 14 + hero.level * 2;
-      setHero((h) => ({ ...h, hp: Math.min(h.maxHp, h.hp + heal), potions: h.potions - 1 }));
+      setHero((h) => ({
+        ...h,
+        hp: Math.min(h.maxHp, h.hp + heal),
+        potions: h.potions - 1,
+      }));
       appendLog(`You drink a potion and restore ${heal} HP.`, "heal");
       return;
     }
@@ -522,8 +554,13 @@ export default function App() {
         appendLog("You are already at full health.", "info");
         return;
       }
+
       const heal = 10 + hero.magic;
-      setHero((h) => ({ ...h, hp: Math.min(h.maxHp, h.hp + heal), healCooldown: 3 }));
+      setHero((h) => ({
+        ...h,
+        hp: Math.min(h.maxHp, h.hp + heal),
+        healCooldown: 3,
+      }));
       appendLog(`You cast a healing spell and recover ${heal} HP.`, "heal");
     }
   };
@@ -539,8 +576,8 @@ export default function App() {
 
   const visibleGrid = useMemo(() => {
     const cells = [];
-    for (let y = 0; y < GRID_SIZE; y += 1) {
-      for (let x = 0; x < GRID_SIZE; x += 1) {
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
         const discovered = dungeon.discovered[key(x, y)] || (x === pos.x && y === pos.y);
         cells.push({ x, y, discovered, type: tileType(x, y, dungeon) });
       }
@@ -561,7 +598,7 @@ export default function App() {
     `,
     backgroundSize: "auto, auto, auto, 38px 38px, 38px 38px, 100% 100%",
     color: "#e5e7eb",
-    padding: 16,
+    padding: 20,
     fontFamily: "Trebuchet MS, Arial, sans-serif",
     position: "relative",
   };
@@ -580,26 +617,21 @@ export default function App() {
     ...panelStyle,
     background: "linear-gradient(180deg, rgba(55, 65, 81, 0.97), rgba(30, 41, 59, 0.99))",
     border: "1px solid #64748b",
-  };
-
-  const collapsibleHeaderStyle = {
-    background: "rgba(15, 23, 42, 0.92)",
-    border: "1px solid #475569",
-    borderRadius: 18,
-    padding: 14,
-    boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.06)",
   };
 
   const mapPanelStyle = {
     ...panelStyle,
     background: "linear-gradient(180deg, rgba(58, 33, 18, 0.97), rgba(28, 25, 23, 0.99))",
     border: "1px solid #a16207",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.46), inset 0 1px 0 rgba(255,255,255,0.05)",
   };
 
   const logPanelStyle = {
     ...panelStyle,
     background: "linear-gradient(180deg, rgba(31, 41, 55, 0.97), rgba(17, 24, 39, 0.99))",
     border: "1px solid #7c3aed",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.46), inset 0 1px 0 rgba(255,255,255,0.05)",
   };
 
   const toggleButtonStyle = {
@@ -610,18 +642,6 @@ export default function App() {
     padding: "8px 12px",
     fontWeight: 700,
     cursor: "pointer",
-  };
-
-  const mobileSectionToggleStyle = {
-    background: "#0f172a",
-    color: "#f8fafc",
-    border: "1px solid #475569",
-    borderRadius: 12,
-    padding: "10px 12px",
-    fontWeight: 700,
-    cursor: "pointer",
-    width: "100%",
-    textAlign: "left",
   };
 
   const buyButtonStyle = { background: "#b45309", color: "white" };
@@ -644,88 +664,150 @@ export default function App() {
     return map[type] || map.info;
   };
 
-  const dangerPulse = `
-    @keyframes pulseDanger {
-      0% { box-shadow: 0 0 12px rgba(239,68,68,0.7); }
-      50% { box-shadow: 0 0 28px rgba(239,68,68,1); }
-      100% { box-shadow: 0 0 12px rgba(239,68,68,0.7); }
-    }
-  `;
-
   const renderTitleRow = (titleSize, imageSize, marginBottom = 10) => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, flexWrap: "wrap", marginBottom, position: "relative" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        flexWrap: "wrap",
+        marginBottom,
+        position: "relative",
+      }}
+    >
       <img
         src="/title.png"
         alt="Dungeon Delver title art"
-        style={{ width: imageSize, height: imageSize, objectFit: "contain", filter: "drop-shadow(0 0 12px rgba(245,158,11,0.5))" }}
+        style={{
+          width: imageSize,
+          height: imageSize,
+          objectFit: "contain",
+          filter: "drop-shadow(0 0 12px rgba(245,158,11,0.5))",
+        }}
       />
-      <h1 style={{ margin: 0, fontSize: titleSize, fontWeight: 900, color: "#f8fafc", letterSpacing: 1, textShadow: "0 0 10px rgba(245,158,11,0.22), 0 2px 16px rgba(59,130,246,0.28)" }}>
+      <h1
+        style={{
+          margin: 0,
+          fontSize: titleSize,
+          fontWeight: 900,
+          color: "#f8fafc",
+          letterSpacing: 1,
+          textShadow: "0 0 10px rgba(245,158,11,0.22), 0 2px 16px rgba(59,130,246,0.28)",
+        }}
+      >
         Dungeon Delver
       </h1>
     </div>
   );
 
-  const heroPanel = (
-    <div style={collapsibleHeaderStyle}>
-      <button style={mobileSectionToggleStyle} onClick={() => setShowHeroPanel((v) => !v)}>
-        {showHeroPanel ? "▼ Hide Hero" : "▶ Show Hero"}
-      </button>
-      {showHeroPanel && (
-        <div style={{ ...statsPanelStyle, marginTop: 12 }}>
-          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 45%)", pointerEvents: "none" }} />
-          <h2 style={{ marginTop: 0, position: "relative" }}>{hero?.name} — Floor {floor}</h2>
-          <div style={{ marginBottom: 14 }}>
-            <div
-              style={{
-                marginBottom: 6,
-                fontWeight: hero && hero.hp <= hero.maxHp * 0.3 ? 900 : 600,
-                color: hero && hero.hp <= hero.maxHp * 0.3 ? "#fecaca" : "inherit",
-                background: hero && hero.hp <= hero.maxHp * 0.3 ? "linear-gradient(90deg, rgba(127,29,29,0.95), rgba(69,10,10,0.9))" : "transparent",
-                border: hero && hero.hp <= hero.maxHp * 0.3 ? "1px solid #ef4444" : "none",
-                borderRadius: hero && hero.hp <= hero.maxHp * 0.3 ? 12 : 0,
-                padding: hero && hero.hp <= hero.maxHp * 0.3 ? "10px 12px" : 0,
-                boxShadow: hero && hero.hp <= hero.maxHp * 0.3 ? "0 0 18px rgba(239,68,68,0.45), inset 0 0 12px rgba(127,29,29,0.6)" : "none",
-                textTransform: hero && hero.hp <= hero.maxHp * 0.3 ? "uppercase" : "none",
-                letterSpacing: hero && hero.hp <= hero.maxHp * 0.3 ? 1 : 0,
-              }}
-            >
-              {hero && hero.hp <= hero.maxHp * 0.3 ? `⚠ LOW HP: ${hero.hp}/${hero.maxHp}` : `HP: ${hero?.hp}/${hero?.maxHp}`}
-            </div>
-            <ProgressBar value={hero?.hp || 0} max={hero?.maxHp || 1} />
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 6 }}>XP: {hero?.xp}/{levelXpNeeded(hero?.level || 1)}</div>
-            <ProgressBar value={hero?.xp || 0} max={levelXpNeeded(hero?.level || 1)} />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <StatBox label="Level" value={hero?.level} />
-            <StatBox label="Gold" value={hero?.gold} />
-            <StatBox label="Attack" value={hero?.attack} />
-            <StatBox label="Defense" value={hero?.defense} />
-            <StatBox label="Magic" value={hero?.magic} />
-            <StatBox label="Potions" value={hero?.potions} />
-          </div>
-          <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-            <ActionButton onClick={buyPotion} style={buyButtonStyle}>Buy Potion (20 gold)</ActionButton>
-            <ActionButton onClick={() => healOutsideBattle("potion")} disabled={battle || gameOver} style={usePotionButtonStyle}>Use Potion</ActionButton>
-            {hero?.id === "mage" && (
-              <ActionButton onClick={() => healOutsideBattle("heal")} disabled={battle || gameOver || hero?.healCooldown > 0} style={healButtonStyle}>
-                Cast Heal {hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
-              </ActionButton>
-            )}
-            <ActionButton onClick={() => setScreen("select")} style={newHeroButtonStyle}>Choose New Hero</ActionButton>
+  if (screen === "select") {
+    return (
+      <div style={pageStyle}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          {renderTitleRow(48, 68)}
+          <p style={{ textAlign: "center", color: "#cbd5e1", maxWidth: 700, margin: "0 auto 30px" }}>
+            Choose your hero, explore a dangerous dungeon, collect treasure, and survive turn-based battles.
+          </p>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
+            {HEROES.map((h) => (
+              <div key={h.id} style={panelStyle}>
+                <div style={{ fontSize: 42 }}>{h.emoji}</div>
+                <h2 style={{ margin: "10px 0" }}>{h.name}</h2>
+                <p style={{ color: "#cbd5e1", minHeight: 48 }}>{h.description}</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, margin: "16px 0" }}>
+                  <StatBox label="HP" value={h.maxHp} />
+                  <StatBox label="Attack" value={h.attack} />
+                  <StatBox label="Defense" value={h.defense} />
+                  <StatBox label="Magic" value={h.magic} />
+                </div>
+                <ActionButton onClick={() => startGame(h)}>{`Begin as ${h.name}`}</ActionButton>
+              </div>
+            ))}
           </div>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
 
-  const mapPanel = (
-    <div style={mapPanelStyle}>
-      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top center, rgba(245,158,11,0.12), transparent 50%)", pointerEvents: "none" }} />
-      <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map</h2>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`, gap: 6, width: "100%", maxWidth: 500, margin: "0 auto 20px", alignItems: "stretch" }}>
-        {visibleGrid.map((cell) => {
+  return (
+    <div style={pageStyle}>
+      <div style={{ maxWidth: 1300, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr", gap: 20 }}>
+        <div
+          style={{
+            textAlign: "center",
+            background: "linear-gradient(135deg, rgba(70, 38, 12, 0.96), rgba(24, 24, 27, 0.99))",
+            border: "1px solid #d97706",
+            borderRadius: 24,
+            padding: "22px 24px",
+            boxShadow: "0 18px 42px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at center top, rgba(245, 158, 11, 0.14), transparent 55%)", pointerEvents: "none" }} />
+          <div style={{ fontSize: 16, letterSpacing: 3, textTransform: "uppercase", color: "#cbd5e1", marginBottom: 6, position: "relative" }}>
+            Explore • Battle • Survive
+          </div>
+          {renderTitleRow("clamp(2rem, 5vw, 3.5rem)", 72, 0)}
+          <div style={{ marginTop: 8, color: "#e2e8f0", fontSize: 16, position: "relative" }}>
+            Descend into the depths and see how far your hero can go.
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+          <div style={statsPanelStyle}>
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 45%)", pointerEvents: "none" }} />
+            <h2 style={{ marginTop: 0, position: "relative" }}>{hero?.name} — Floor {floor}</h2>
+            <div style={{ marginBottom: 14 }}>
+              <div
+                style={{
+                  marginBottom: 6,
+                  fontWeight: hero && hero.hp <= hero.maxHp * 0.3 ? 900 : 600,
+                  color: hero && hero.hp <= hero.maxHp * 0.3 ? "#fecaca" : "inherit",
+                  background: hero && hero.hp <= hero.maxHp * 0.3 ? "linear-gradient(90deg, rgba(127,29,29,0.95), rgba(69,10,10,0.9))" : "transparent",
+                  border: hero && hero.hp <= hero.maxHp * 0.3 ? "1px solid #ef4444" : "none",
+                  borderRadius: hero && hero.hp <= hero.maxHp * 0.3 ? 12 : 0,
+                  padding: hero && hero.hp <= hero.maxHp * 0.3 ? "10px 12px" : 0,
+                  boxShadow: hero && hero.hp <= hero.maxHp * 0.3 ? "0 0 18px rgba(239,68,68,0.45), inset 0 0 12px rgba(127,29,29,0.6)" : "none",
+                  textTransform: hero && hero.hp <= hero.maxHp * 0.3 ? "uppercase" : "none",
+                  letterSpacing: hero && hero.hp <= hero.maxHp * 0.3 ? 1 : 0,
+                }}
+              >
+                {hero && hero.hp <= hero.maxHp * 0.3 ? `⚠ LOW HP: ${hero.hp}/${hero.maxHp}` : `HP: ${hero?.hp}/${hero?.maxHp}`}
+              </div>
+              <ProgressBar value={hero?.hp || 0} max={hero?.maxHp || 1} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 6 }}>XP: {hero?.xp}/{levelXpNeeded(hero?.level || 1)}</div>
+              <ProgressBar value={hero?.xp || 0} max={levelXpNeeded(hero?.level || 1)} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <StatBox label="Level" value={hero?.level} />
+              <StatBox label="Gold" value={hero?.gold} />
+              <StatBox label="Attack" value={hero?.attack} />
+              <StatBox label="Defense" value={hero?.defense} />
+              <StatBox label="Magic" value={hero?.magic} />
+              <StatBox label="Potions" value={hero?.potions} />
+            </div>
+            <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+              <ActionButton onClick={buyPotion} style={buyButtonStyle}>Buy Potion (20 gold)</ActionButton>
+              <ActionButton onClick={() => healOutsideBattle("potion")} disabled={battle || gameOver} style={usePotionButtonStyle}>Use Potion</ActionButton>
+              {hero?.id === "mage" && (
+                <ActionButton onClick={() => healOutsideBattle("heal")} disabled={battle || gameOver || hero?.healCooldown > 0} style={healButtonStyle}>
+                  Cast Heal {hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
+                </ActionButton>
+              )}
+              <ActionButton onClick={() => setScreen("select")} style={newHeroButtonStyle}>Choose New Hero</ActionButton>
+            </div>
+          </div>
+
+          <div style={mapPanelStyle}>
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top center, rgba(245,158,11,0.12), transparent 50%)", pointerEvents: "none" }} />
+            <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map</h2>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`, gap: 6, width: "100%", maxWidth: 500, margin: "0 auto 20px", alignItems: "stretch" }}>
+              {visibleGrid.map((cell) => {
           const isPlayer = cell.x === pos.x && cell.y === pos.y;
           const discovered = cell.discovered;
           const isLowHP = hero && hero.hp <= hero.maxHp * 0.3;
@@ -781,180 +863,125 @@ export default function App() {
             </div>
           );
         })}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "60px 60px 60px", gap: 8, justifyContent: "center" }}>
-        <div />
-        <ActionButton onClick={() => move(0, -1)}>↑</ActionButton>
-        <div />
-        <ActionButton onClick={() => move(-1, 0)}>←</ActionButton>
-        <ActionButton onClick={() => move(0, 1)}>↓</ActionButton>
-        <ActionButton onClick={() => move(1, 0)}>→</ActionButton>
-      </div>
-      <p style={{ textAlign: "center", color: "#94a3b8", marginTop: 12 }}>Use arrow keys or WASD too.</p>
-    </div>
-  );
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "60px 60px 60px", gap: 8, justifyContent: "center" }}>
+              <div />
+              <ActionButton onClick={() => move(0, -1)}>↑</ActionButton>
+              <div />
+              <ActionButton onClick={() => move(-1, 0)}>←</ActionButton>
+              <ActionButton onClick={() => move(0, 1)}>↓</ActionButton>
+              <ActionButton onClick={() => move(1, 0)}>→</ActionButton>
+            </div>
+            <p style={{ textAlign: "center", color: "#94a3b8", marginTop: 12 }}>Use arrow keys or WASD too.</p>
+          </div>
 
-  const battlePanel = (
-    <div style={{ ...logPanelStyle, minHeight: "calc(100vh - 180px)" }}>
-      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top right, rgba(124,58,237,0.14), transparent 48%)", pointerEvents: "none" }} />
-      <h2 style={{ marginTop: 0 }}>Battle</h2>
-      <div style={{ background: "#111827", border: "1px solid #374151", borderRadius: 14, padding: 14, marginBottom: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
-          <strong>{battle?.monster.emoji} {battle?.monster.name}</strong>
-          <span>{battle?.monster.hp}/{battle?.monster.maxHp} HP</span>
-        </div>
-        <ProgressBar value={battle?.monster.hp || 0} max={battle?.monster.maxHp || 1} />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-        <ActionButton onClick={() => heroAttack("attack")} style={{ background: "#b91c1c" }}>Attack</ActionButton>
-        <ActionButton onClick={() => heroAttack("special")} disabled={hero?.specialCooldown > 0} style={{ background: "#d97706" }}>
-          {hero?.specialName} {hero?.specialCooldown > 0 ? `(${hero.specialCooldown})` : ""}
-        </ActionButton>
-        <ActionButton onClick={() => heroAttack("potion")} style={{ background: "#047857" }}>Use Potion</ActionButton>
-        <ActionButton onClick={() => heroAttack("heal")} disabled={hero?.id !== "mage" || hero?.healCooldown > 0} style={healButtonStyle}>
-          Cast Heal {hero?.id === "mage" && hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
-        </ActionButton>
-      </div>
-      <div>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Battle Log</div>
-        <div ref={logContainerRef} style={{ display: "grid", gap: 10, maxHeight: "55vh", overflowY: "auto", paddingRight: 4 }}>
-          {[...log].slice(-8).reverse().map((entry, i) => {
-            const logStyle = getLogItemStyle(entry.type);
-            return (
-              <div
-                key={i}
-                style={{
-                  background: logStyle.background,
-                  border: `1px solid ${logStyle.border}`,
-                  color: logStyle.color,
-                  borderRadius: 14,
-                  padding: 12,
-                }}
-              >
-                {entry.text}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-
-  const logOrGameOverPanel = gameOver ? (
-    <div style={logPanelStyle}>
-      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top right, rgba(124,58,237,0.14), transparent 48%)", pointerEvents: "none" }} />
-      <h2 style={{ marginTop: 0 }}>Game Over</h2>
-      <p>You reached Floor {floor} and collected {hero?.gold ?? 0} gold.</p>
-      <ActionButton onClick={() => setScreen("select")}>Play Again</ActionButton>
-    </div>
-  ) : (
-    <div style={logPanelStyle}>
-      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top right, rgba(124,58,237,0.14), transparent 48%)", pointerEvents: "none" }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>Adventure Log</h2>
-        <button style={toggleButtonStyle} onClick={() => setShowLog((v) => !v)}>
-          {showLog ? "Hide Log" : "Show Log"}
-        </button>
-      </div>
-      {showLog ? (
-        <div ref={logContainerRef} style={{ display: "grid", gap: 10, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
-          {[...log].reverse().map((entry, i) => {
-            const logStyle = getLogItemStyle(entry.type);
-            return (
-              <div
-                key={i}
-                style={{
-                  background: logStyle.background,
-                  border: `1px solid ${logStyle.border}`,
-                  color: logStyle.color,
-                  borderRadius: 14,
-                  padding: 12,
-                }}
-              >
-                {entry.text}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p style={{ color: "#94a3b8", margin: 0 }}>The adventure log is hidden.</p>
-      )}
-    </div>
-  );
-
-  if (screen === "select") {
-    return (
-      <div style={pageStyle}>
-        <style>{dangerPulse}</style>
-        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          {renderTitleRow(48, 68)}
-          <p style={{ textAlign: "center", color: "#cbd5e1", maxWidth: 700, margin: "0 auto 30px" }}>
-            Choose your hero, explore a dangerous dungeon, collect treasure, and survive turn-based battles.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
-            {HEROES.map((h) => (
-              <div key={h.id} style={panelStyle}>
-                <div style={{ fontSize: 42 }}>{h.emoji}</div>
-                <h2 style={{ margin: "10px 0" }}>{h.name}</h2>
-                <p style={{ color: "#cbd5e1", minHeight: 48 }}>{h.description}</p>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, margin: "16px 0" }}>
-                  <StatBox label="HP" value={h.maxHp} />
-                  <StatBox label="Attack" value={h.attack} />
-                  <StatBox label="Defense" value={h.defense} />
-                  <StatBox label="Magic" value={h.magic} />
+          <div style={logPanelStyle}>
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top right, rgba(124,58,237,0.14), transparent 48%)", pointerEvents: "none" }} />
+            {battle ? (
+              <>
+                <h2 style={{ marginTop: 0 }}>Battle</h2>
+                <div style={{ background: "#111827", border: "1px solid #374151", borderRadius: 14, padding: 14, marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                    <strong>{battle.monster.emoji} {battle.monster.name}</strong>
+                    <span>{battle.monster.hp}/{battle.monster.maxHp} HP</span>
+                  </div>
+                  <ProgressBar value={battle.monster.hp} max={battle.monster.maxHp} />
                 </div>
-                <ActionButton onClick={() => startGame(h)}>{`Begin as ${h.name}`}</ActionButton>
-              </div>
-            ))}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                  <ActionButton
+					  onClick={() => heroAttack("attack")}
+					  style={{ background: "#b91c1c" }} // red
+					>
+					  Attack
+					</ActionButton>
+
+					<ActionButton
+					  onClick={() => heroAttack("special")}
+					  disabled={hero?.specialCooldown > 0}
+					  style={{ background: "#d97706" }} // amber/gold
+					>
+					  {hero?.specialName} {hero?.specialCooldown > 0 ? `(${hero.specialCooldown})` : ""}
+					</ActionButton>
+
+					<ActionButton
+					  onClick={() => heroAttack("potion")}
+					  style={{ background: "#047857" }} // green
+					>
+					  Use Potion
+					</ActionButton>
+
+					<ActionButton
+					  onClick={() => heroAttack("heal")}
+					  disabled={hero?.id !== "mage" || hero?.healCooldown > 0}
+					  style={{ background: "#7c3aed" }} // purple
+					>
+					  Cast Heal {hero?.id === "mage" && hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
+					</ActionButton>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 10 }}>Battle Log</div>
+                  <div ref={logContainerRef} style={{ display: "grid", gap: 10, maxHeight: 260, overflowY: "auto", paddingRight: 4 }}>
+                    {[...log].slice(-8).reverse().map((entry, i) => {
+                      const logStyle = getLogItemStyle(entry.type);
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            background: logStyle.background,
+                            border: `1px solid ${logStyle.border}`,
+                            color: logStyle.color,
+                            borderRadius: 14,
+                            padding: 12,
+                          }}
+                        >
+                          {entry.text}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : gameOver ? (
+              <>
+                <h2 style={{ marginTop: 0 }}>Game Over</h2>
+                <p>You reached Floor {floor} and collected {hero?.gold ?? 0} gold.</p>
+                <ActionButton onClick={() => setScreen("select")}>Play Again</ActionButton>
+              </>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <h2 style={{ margin: 0 }}>Adventure Log</h2>
+                  <button style={toggleButtonStyle} onClick={() => setShowLog((v) => !v)}>
+                    {showLog ? "Hide Log" : "Show Log"}
+                  </button>
+                </div>
+                {showLog ? (
+                  <div ref={logContainerRef} style={{ display: "grid", gap: 10, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
+                    {[...log].reverse().map((entry, i) => {
+                      const logStyle = getLogItemStyle(entry.type);
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            background: logStyle.background,
+                            border: `1px solid ${logStyle.border}`,
+                            color: logStyle.color,
+                            borderRadius: 14,
+                            padding: 12,
+                          }}
+                        >
+                          {entry.text}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ color: "#94a3b8", margin: 0 }}>The adventure log is hidden.</p>
+                )}
+              </>
+            )}
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={pageStyle}>
-      <style>{dangerPulse}</style>
-      <div style={{ maxWidth: 1300, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
-        <div style={collapsibleHeaderStyle}>
-          <button style={mobileSectionToggleStyle} onClick={() => setShowTitlePanel((v) => !v)}>
-            {showTitlePanel ? "▼ Hide Title" : "▶ Show Title"}
-          </button>
-          {showTitlePanel && (
-            <div
-              style={{
-                textAlign: "center",
-                background: "linear-gradient(135deg, rgba(70, 38, 12, 0.96), rgba(24, 24, 27, 0.99))",
-                border: "1px solid #d97706",
-                borderRadius: 24,
-                padding: "22px 24px",
-                boxShadow: "0 18px 42px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)",
-                position: "relative",
-                overflow: "hidden",
-                marginTop: 12,
-              }}
-            >
-              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at center top, rgba(245, 158, 11, 0.14), transparent 55%)", pointerEvents: "none" }} />
-              <div style={{ fontSize: 16, letterSpacing: 3, textTransform: "uppercase", color: "#cbd5e1", marginBottom: 6, position: "relative" }}>
-                Explore • Battle • Survive
-              </div>
-              {renderTitleRow("clamp(2rem, 5vw, 3.5rem)", 72, 0)}
-              <div style={{ marginTop: 8, color: "#e2e8f0", fontSize: 16, position: "relative" }}>
-                Descend into the depths and see how far your hero can go.
-              </div>
-            </div>
-          )}
-        </div>
-
-        {battle ? (
-          battlePanel
-        ) : (
-          <>
-            {heroPanel}
-            {mapPanel}
-            {logOrGameOverPanel}
-          </>
-        )}
       </div>
     </div>
   );
