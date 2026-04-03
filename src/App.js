@@ -264,7 +264,7 @@ export default function App() {
     return h;
   };
 
-  const triggerTile = (x, y) => {
+  const triggerTile = useCallback((x, y) => {
     const k = key(x, y);
     const kind = tileType(x, y, dungeon);
 
@@ -340,7 +340,7 @@ export default function App() {
     }
 
     appendLog("The corridor is eerily quiet.", "info");
-  };
+  }, [dungeon, floor]);
 
   const move = useCallback((dx, dy) => {
     if (battle || gameOver || !hero) return;
@@ -353,7 +353,7 @@ export default function App() {
     setPos({ x: nx, y: ny });
     revealTile(nx, ny);
     triggerTile(nx, ny);
-  }, [pos, battle, gameOver, hero, dungeon]);
+  }, [pos, battle, gameOver, hero, dungeon, triggerTile]);
 
   useEffect(() => {
     const onKey = (e) => {
