@@ -813,6 +813,35 @@ export default function App() {
                 pointerEvents: "none",
               }}
             />
+			
+			{gameOver && (
+			  <div
+				style={{
+				  position: "absolute",
+				  inset: 0,
+				  background: "rgba(15, 23, 42, 0.75)", // dark overlay
+				  backdropFilter: "grayscale(0.4) blur(1px)",
+				  borderRadius: 20,
+				  zIndex: 5,
+				  display: "flex",
+				  alignItems: "center",
+				  justifyContent: "center",
+				  pointerEvents: "all", // blocks clicks
+				}}
+			  >
+				<div
+				  style={{
+					textAlign: "center",
+					color: "#cbd5e1",
+					fontWeight: 800,
+					letterSpacing: 1,
+				  }}
+				>
+				  <div style={{ fontSize: 28, marginBottom: 6 }}>☠️</div>
+				  <div>Game Over</div>
+				</div>
+			  </div>
+			)}
 
             <div
               style={{
@@ -833,7 +862,7 @@ export default function App() {
               >
                 {hero?.emoji}
               </div>
-              <h2 style={{ margin: 0 }}>{hero?.name} — Floor {floor}</h2>
+              <h2 style={{ margin: 0 }}>{hero?.name}</h2>
             </div>
 
             <div style={{ marginBottom: 14 }}>
@@ -916,7 +945,69 @@ export default function App() {
               }}
             />
 
-            {battle ? (
+			{gameOver ? (
+  <>
+    <h2 style={{ marginTop: 0, position: "relative" }}>Game Over</h2>
+
+    <div
+      style={{
+        background: "#111827",
+        border: "1px solid #7f1d1d",
+        borderRadius: 14,
+        padding: 18,
+        marginBottom: 14,
+        position: "relative",
+        boxShadow: "0 0 18px rgba(185,28,28,0.18)",
+      }}
+    >
+      <div style={{ fontSize: 44, textAlign: "center", marginBottom: 10 }}>☠️</div>
+      <div style={{ textAlign: "center", fontSize: 20, fontWeight: 800, color: "#fecaca", marginBottom: 8 }}>
+        You have fallen in the dungeon.
+      </div>
+      <p style={{ textAlign: "center", color: "#cbd5e1", margin: "0 0 8px" }}>
+        You reached Floor {floor}.
+      </p>
+      <p style={{ textAlign: "center", color: "#cbd5e1", margin: "0 0 16px" }}>
+        Gold collected: {hero?.gold ?? 0}
+      </p>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <ActionButton onClick={() => setScreen("select")}>Play Again</ActionButton>
+      </div>
+    </div>
+
+    <div style={{ position: "relative" }}>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>Final Log</div>
+      <div
+        ref={logContainerRef}
+        style={{
+          display: "grid",
+          gap: 10,
+          maxHeight: 260,
+          overflowY: "auto",
+          paddingRight: 4,
+        }}
+      >
+        {log.slice(-8).reverse().map((entry, i) => {
+          const logStyle = getLogItemStyle(entry.type);
+          return (
+            <div
+              key={i}
+              style={{
+                background: logStyle.background,
+                border: `1px solid ${logStyle.border}`,
+                color: logStyle.color,
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              {entry.text}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </>
+			) : battle ? (
               <>
                 <h2 style={{ marginTop: 0, position: "relative" }}>Battle</h2>
 
@@ -1038,7 +1129,7 @@ export default function App() {
               </>
             ) : (
               <>
-                <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map</h2>
+                <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map — Floor {floor}</h2>
 
                 <div
                   style={{
@@ -1144,14 +1235,7 @@ export default function App() {
               }}
             />
 
-            {gameOver ? (
-              <>
-                <h2 style={{ marginTop: 0 }}>Game Over</h2>
-                <p>You reached Floor {floor} and collected {hero?.gold ?? 0} gold.</p>
-                <ActionButton onClick={() => setScreen("select")}>Play Again</ActionButton>
-              </>
-            ) : (
-              <>
+            <>
                 <div
                   style={{
                     display: "flex",
@@ -1197,7 +1281,7 @@ export default function App() {
                   <p style={{ color: "#94a3b8", margin: 0 }}>The adventure log is hidden.</p>
                 )}
               </>
-            )}
+          
           </div>
         </div>
       </div>
