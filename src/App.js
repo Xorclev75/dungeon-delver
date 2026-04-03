@@ -884,14 +884,35 @@ export default function App() {
                   <ProgressBar value={battle.monster.hp} max={battle.monster.maxHp} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                  <ActionButton onClick={() => heroAttack("attack")}>Attack</ActionButton>
-                  <ActionButton onClick={() => heroAttack("special")} disabled={hero?.specialCooldown > 0}>
-                    {hero?.specialName} {hero?.specialCooldown > 0 ? `(${hero.specialCooldown})` : ""}
-                  </ActionButton>
-                  <ActionButton onClick={() => heroAttack("potion")}>Use Potion</ActionButton>
-                  <ActionButton onClick={() => heroAttack("heal")} disabled={hero?.id !== "mage" || hero?.healCooldown > 0} style={healButtonStyle}>
-                    Cast Heal {hero?.id === "mage" && hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
-                  </ActionButton>
+                  <ActionButton
+					  onClick={() => heroAttack("attack")}
+					  style={{ background: "#b91c1c" }} // red
+					>
+					  Attack
+					</ActionButton>
+
+					<ActionButton
+					  onClick={() => heroAttack("special")}
+					  disabled={hero?.specialCooldown > 0}
+					  style={{ background: "#d97706" }} // amber/gold
+					>
+					  {hero?.specialName} {hero?.specialCooldown > 0 ? `(${hero.specialCooldown})` : ""}
+					</ActionButton>
+
+					<ActionButton
+					  onClick={() => heroAttack("potion")}
+					  style={{ background: "#047857" }} // green
+					>
+					  Use Potion
+					</ActionButton>
+
+					<ActionButton
+					  onClick={() => heroAttack("heal")}
+					  disabled={hero?.id !== "mage" || hero?.healCooldown > 0}
+					  style={{ background: "#7c3aed" }} // purple
+					>
+					  Cast Heal {hero?.id === "mage" && hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
+					</ActionButton>
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, marginBottom: 10 }}>Battle Log</div>
