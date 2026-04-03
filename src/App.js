@@ -95,19 +95,34 @@ function createDungeon(floor) {
   const treasures = {};
   const fountains = {};
   const traps = {};
-  const exit = { x: GRID_SIZE - 1, y: GRID_SIZE - 1 };
+
+  let exit = { x: 0, y: 0 };
+  while ((exit.x === 0 && exit.y === 0) || (exit.x <= 1 && exit.y <= 1)) {
+    exit = {
+      x: rand(0, GRID_SIZE - 1),
+      y: rand(0, GRID_SIZE - 1),
+    };
+  }
+
   const isBossFloor = floor % 5 === 0;
 
   if (isBossFloor) {
     const bossX = Math.max(1, GRID_SIZE - 2);
     const bossY = Math.max(1, GRID_SIZE - 2);
-    monsters[key(bossX, bossY)] = pickMonster(floor);
+
+    if (bossX === exit.x && bossY === exit.y) {
+      const fallbackX = bossX - 1 >= 1 ? bossX - 1 : 1;
+      monsters[key(fallbackX, bossY)] = pickMonster(floor);
+    } else {
+      monsters[key(bossX, bossY)] = pickMonster(floor);
+    }
 
     for (let y = 0; y < GRID_SIZE; y++) {
       for (let x = 0; x < GRID_SIZE; x++) {
         if (x === 0 && y === 0) continue;
         if (x === exit.x && y === exit.y) continue;
-        if (x === bossX && y === bossY) continue;
+        if (monsters[key(x, y)]) continue;
+
         const roll = Math.random();
         if (roll < 0.14) treasures[key(x, y)] = rand(12, 24) + floor * 3;
         else if (roll < 0.2) fountains[key(x, y)] = rand(10, 18) + floor * 2;
@@ -119,6 +134,7 @@ function createDungeon(floor) {
       for (let x = 0; x < GRID_SIZE; x++) {
         if (x === 0 && y === 0) continue;
         if (x === exit.x && y === exit.y) continue;
+
         const roll = Math.random();
         if (roll < 0.24) monsters[key(x, y)] = pickMonster(floor);
         else if (roll < 0.38) treasures[key(x, y)] = rand(8, 18) + floor * 2;
@@ -128,7 +144,14 @@ function createDungeon(floor) {
     }
   }
 
-  return { monsters, treasures, fountains, traps, exit, discovered: { [key(0, 0)]: true } };
+  return {
+    monsters,
+    treasures,
+    fountains,
+    traps,
+    exit,
+    discovered: { [key(0, 0)]: true },
+  };
 }
 
 function battleDamage(attacker, defender, boost = 0) {
@@ -184,7 +207,14 @@ function StatBox({ label, value }) {
         padding: 12,
       }}
     >
-      <div style={{ color: "#9ca3af", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>
+      <div
+        style={{
+          color: "#9ca3af",
+          fontSize: 12,
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+        }}
+      >
         {label}
       </div>
       <div style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>{value}</div>
@@ -224,7 +254,11 @@ export default function App() {
   const [battle, setBattle] = useState(null);
   const [gameOver, setGameOver] = useState(false);
   const [showLog, setShowLog] = useState(true);
+  const [showTitleCard, setShowTitleCard] = useState(true);
+  const [showHeroCard, setShowHeroCard] = useState(true);
   const logContainerRef = useRef(null);
+
+  const isDisabled = battle || gameOver;
 
   const appendLog = useCallback((text, type = "info") => {
     setLog((prev) => [...prev, { text, type }].slice(-40));
@@ -255,14 +289,15 @@ export default function App() {
     setScreen("game");
   };
 
-  const revealTile = (x, y) => {
+  const revealTile = useCallback((x, y) => {
     const k = key(x, y);
     setDungeon((d) => ({ ...d, discovered: { ...d.discovered, [k]: true } }));
-  };
+  }, []);
 
   const checkLevelUp = (updatedHero) => {
     let h = { ...updatedHero };
     let leveled = false;
+
     while (h.xp >= levelXpNeeded(h.level)) {
       h.xp -= levelXpNeeded(h.level);
       h.level += 1;
@@ -273,6 +308,7 @@ export default function App() {
       h.magic += 1;
       leveled = true;
     }
+
     if (leveled) appendLog(`You leveled up to ${h.level}! Your power grows.`, "level");
     return h;
   };
@@ -357,16 +393,23 @@ export default function App() {
       }
 
       if (kind === "exit") {
+        appendLog("🪜 You discover a rickety ladder leading to the next floor...", "info");
+
         const nextFloor = floor + 1;
-        setFloor(nextFloor);
-        setDungeon(createDungeon(nextFloor));
-        setPos(START_POS);
-        appendLog(
-          nextFloor % 5 === 0
-            ? `You descend to Floor ${nextFloor}. A boss lurks in the darkness...`
-            : `You descend to Floor ${nextFloor}. The dungeon grows darker.`,
-          nextFloor % 5 === 0 ? "danger" : "info"
-        );
+
+        setTimeout(() => {
+          setFloor(nextFloor);
+          setDungeon(createDungeon(nextFloor));
+          setPos(START_POS);
+
+          appendLog(
+            nextFloor % 5 === 0
+              ? `You descend to Floor ${nextFloor}. A boss lurks in the darkness...`
+              : `You descend to Floor ${nextFloor}. The dungeon grows darker.`,
+            nextFloor % 5 === 0 ? "danger" : "info"
+          );
+        }, 300);
+
         return;
       }
 
@@ -394,7 +437,7 @@ export default function App() {
       revealTile(nx, ny);
       triggerTile(nx, ny);
     },
-    [battle, gameOver, hero, pos, triggerTile]
+    [battle, gameOver, hero, pos, revealTile, triggerTile]
   );
 
   useEffect(() => {
@@ -415,7 +458,7 @@ export default function App() {
     if (logContainerRef.current) {
       logContainerRef.current.scrollTop = 0;
     }
-  }, [log, showLog]);
+  }, [log, showLog, battle, gameOver]);
 
   const heroAttack = (type) => {
     if (!battle || !hero) return;
@@ -716,6 +759,7 @@ export default function App() {
   );
 
   const hpPercent = hero ? hero.hp / hero.maxHp : 1;
+  
 
   let glowColor = "rgba(34,197,94,0.9)";
   if (hpPercent <= 0.3) {
@@ -786,21 +830,47 @@ export default function App() {
             }}
           />
           <div
-            style={{
-              fontSize: 16,
-              letterSpacing: 3,
-              textTransform: "uppercase",
-              color: "#cbd5e1",
-              marginBottom: 6,
-              position: "relative",
-            }}
-          >
-            Explore • Battle • Survive
-          </div>
-          {renderTitleRow("clamp(2rem, 5vw, 3.5rem)", 72, 0)}
-          <div style={{ marginTop: 8, color: "#e2e8f0", fontSize: 16, position: "relative" }}>
-            Descend into the depths and see how far your hero can go.
-          </div>
+			  style={{
+				display: "grid",
+				gridTemplateColumns: "1fr auto 1fr",
+				alignItems: "center",
+				gap: 12,
+				marginBottom: showTitleCard ? 6 : 0,
+				position: "relative",
+				zIndex: 1,
+			  }}
+			>
+			  <div />		
+				
+			{showTitleCard && (
+			  <div
+				style={{
+				  fontSize: 16,
+				  letterSpacing: 3,
+				  textTransform: "uppercase",
+				  color: "#cbd5e1",
+				}}
+			  >
+				Explore • Battle • Survive
+			  </div>
+			)}
+
+			  <div style={{ justifySelf: "end" }}>
+				<button style={toggleButtonStyle} onClick={() => setShowTitleCard((v) => !v)}>
+				  {showTitleCard ? "Hide" : "Show"}
+				</button>
+			  </div>
+			  
+			</div>
+
+          {showTitleCard && (
+            <>
+              {renderTitleRow("clamp(2rem, 5vw, 3.5rem)", 72, 0)}
+              <div style={{ marginTop: 8, color: "#e2e8f0", fontSize: 16, position: "relative", zIndex: 1 }}>
+                Descend into the depths and see how far your hero can go.
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
@@ -813,126 +883,154 @@ export default function App() {
                 pointerEvents: "none",
               }}
             />
-			
-			{gameOver && (
-			  <div
-				style={{
-				  position: "absolute",
-				  inset: 0,
-				  background: "rgba(15, 23, 42, 0.75)", // dark overlay
-				  backdropFilter: "grayscale(0.4) blur(1px)",
-				  borderRadius: 20,
-				  zIndex: 5,
-				  display: "flex",
-				  alignItems: "center",
-				  justifyContent: "center",
-				  pointerEvents: "all", // blocks clicks
-				}}
-			  >
-				<div
-				  style={{
-					textAlign: "center",
-					color: "#cbd5e1",
-					fontWeight: 800,
-					letterSpacing: 1,
-				  }}
-				>
-				  <div style={{ fontSize: 28, marginBottom: 6 }}>☠️</div>
-				  <div>Game Over</div>
-				</div>
-			  </div>
-			)}
 
             <div
               style={{
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
                 gap: 12,
-                marginTop: 0,
-                marginBottom: 14,
+                marginBottom: showHeroCard ? 14 : 0,
                 position: "relative",
+                zIndex: 1,
               }}
             >
-              <div
-                style={{
-                  fontSize: 42,
-                  transition: "all 0.3s ease",
-                  filter: `drop-shadow(0 0 8px ${glowColor}) drop-shadow(0 0 18px ${glowColor})`,
-                }}
-              >
-                {hero?.emoji}
-              </div>
-              <h2 style={{ margin: 0 }}>{hero?.name}</h2>
+              <h2 style={{ margin: 0 }}>Hero</h2>
+              <button style={toggleButtonStyle} onClick={() => setShowHeroCard((v) => !v)}>
+                {showHeroCard ? "Hide" : "Show"}
+              </button>
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <div
-                style={{
-                  marginBottom: 6,
-                  fontWeight: hero && hero.hp <= hero.maxHp * 0.3 ? 900 : 600,
-                  color: hero && hero.hp <= hero.maxHp * 0.3 ? "#fecaca" : "inherit",
-                  background:
-                    hero && hero.hp <= hero.maxHp * 0.3
-                      ? "linear-gradient(90deg, rgba(127,29,29,0.95), rgba(69,10,10,0.9))"
-                      : "transparent",
-                  border: hero && hero.hp <= hero.maxHp * 0.3 ? "1px solid #ef4444" : "none",
-                  borderRadius: hero && hero.hp <= hero.maxHp * 0.3 ? 12 : 0,
-                  padding: hero && hero.hp <= hero.maxHp * 0.3 ? "10px 12px" : 0,
-                  boxShadow:
-                    hero && hero.hp <= hero.maxHp * 0.3
-                      ? "0 0 18px rgba(239,68,68,0.45), inset 0 0 12px rgba(127,29,29,0.6)"
-                      : "none",
-                  textTransform: hero && hero.hp <= hero.maxHp * 0.3 ? "uppercase" : "none",
-                  letterSpacing: hero && hero.hp <= hero.maxHp * 0.3 ? 1 : 0,
-                }}
-              >
-                {hero && hero.hp <= hero.maxHp * 0.3
-                  ? `⚠ LOW HP: ${hero.hp}/${hero.maxHp}`
-                  : `HP: ${hero?.hp}/${hero?.maxHp}`}
-              </div>
-              <ProgressBar value={hero?.hp || 0} max={hero?.maxHp || 1} />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ marginBottom: 6 }}>
-                XP: {hero?.xp}/{levelXpNeeded(hero?.level || 1)}
-              </div>
-              <ProgressBar value={hero?.xp || 0} max={levelXpNeeded(hero?.level || 1)} />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <StatBox label="Level" value={hero?.level} />
-              <StatBox label="Gold" value={hero?.gold} />
-              <StatBox label="Attack" value={hero?.attack} />
-              <StatBox label="Defense" value={hero?.defense} />
-              <StatBox label="Magic" value={hero?.magic} />
-              <StatBox label="Potions" value={hero?.potions} />
-            </div>
-
-            <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-              <ActionButton onClick={buyPotion} style={buyButtonStyle}>
-                Buy Potion (20 gold)
-              </ActionButton>
-              <ActionButton
-                onClick={() => healOutsideBattle("potion")}
-                disabled={battle || gameOver}
-                style={usePotionButtonStyle}
-              >
-                Use Potion
-              </ActionButton>
-              {hero?.id === "mage" && (
-                <ActionButton
-                  onClick={() => healOutsideBattle("heal")}
-                  disabled={battle || gameOver || hero?.healCooldown > 0}
-                  style={healButtonStyle}
+            {showHeroCard && (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    marginTop: 0,
+                    marginBottom: 14,
+                    position: "relative",
+                  }}
                 >
-                  Cast Heal {hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
-                </ActionButton>
-              )}
-              <ActionButton onClick={() => setScreen("select")} style={newHeroButtonStyle}>
-                Choose New Hero
-              </ActionButton>
-            </div>
+                  <div
+                    style={{
+                      fontSize: 42,
+                      transition: "all 0.3s ease",
+                      filter: `drop-shadow(0 0 8px ${glowColor}) drop-shadow(0 0 18px ${glowColor})`,
+                    }}
+                  >
+                    {hero?.emoji}
+                  </div>
+                  <h2 style={{ margin: 0 }}>{hero?.name}</h2>
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <div
+                    style={{
+                      marginBottom: 6,
+                      fontWeight: hero && hero.hp <= hero.maxHp * 0.3 ? 900 : 600,
+                      color: hero && hero.hp <= hero.maxHp * 0.3 ? "#fecaca" : "inherit",
+                      background:
+                        hero && hero.hp <= hero.maxHp * 0.3
+                          ? "linear-gradient(90deg, rgba(127,29,29,0.95), rgba(69,10,10,0.9))"
+                          : "transparent",
+                      border: hero && hero.hp <= hero.maxHp * 0.3 ? "1px solid #ef4444" : "none",
+                      borderRadius: hero && hero.hp <= hero.maxHp * 0.3 ? 12 : 0,
+                      padding: hero && hero.hp <= hero.maxHp * 0.3 ? "10px 12px" : 0,
+                      boxShadow:
+                        hero && hero.hp <= hero.maxHp * 0.3
+                          ? "0 0 18px rgba(239,68,68,0.45), inset 0 0 12px rgba(127,29,29,0.6)"
+                          : "none",
+                      textTransform: hero && hero.hp <= hero.maxHp * 0.3 ? "uppercase" : "none",
+                      letterSpacing: hero && hero.hp <= hero.maxHp * 0.3 ? 1 : 0,
+                    }}
+                  >
+                    {hero && hero.hp <= hero.maxHp * 0.3
+                      ? `⚠ LOW HP: ${hero.hp}/${hero.maxHp}`
+                      : `HP: ${hero?.hp}/${hero?.maxHp}`}
+                  </div>
+                  <ProgressBar value={hero?.hp || 0} max={hero?.maxHp || 1} />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ marginBottom: 6 }}>
+                    XP: {hero?.xp}/{levelXpNeeded(hero?.level || 1)}
+                  </div>
+                  <ProgressBar value={hero?.xp || 0} max={levelXpNeeded(hero?.level || 1)} />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <StatBox label="Level" value={hero?.level} />
+                  <StatBox label="Gold" value={hero?.gold} />
+                  <StatBox label="Attack" value={hero?.attack} />
+                  <StatBox label="Defense" value={hero?.defense} />
+                  <StatBox label="Magic" value={hero?.magic} />
+                  <StatBox label="Potions" value={hero?.potions} />
+                </div>
+
+                <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+                  <ActionButton onClick={buyPotion} disabled={gameOver} style={buyButtonStyle}>
+                    Buy Potion (20 gold)
+                  </ActionButton>
+
+                  <ActionButton
+                    onClick={() => healOutsideBattle("potion")}
+                    disabled={isDisabled}
+                    style={usePotionButtonStyle}
+                  >
+                    Use Potion
+                  </ActionButton>
+
+                  {hero?.id === "mage" && (
+                    <ActionButton
+                      onClick={() => healOutsideBattle("heal")}
+                      disabled={battle || gameOver || hero?.healCooldown > 0}
+                      style={healButtonStyle}
+                    >
+                      Cast Heal {hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
+                    </ActionButton>
+                  )}
+
+                  <ActionButton
+                    onClick={() => setScreen("select")}
+                    disabled={gameOver}
+                    style={newHeroButtonStyle}
+                  >
+                    Choose New Hero
+                  </ActionButton>
+                </div>
+
+                {gameOver && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(15, 23, 42, 0.75)",
+                      backdropFilter: "grayscale(0.4) blur(1px)",
+                      borderRadius: 20,
+                      zIndex: 5,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      pointerEvents: "all",
+                    }}
+                  >
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: "#cbd5e1",
+                        fontWeight: 800,
+                        letterSpacing: 1,
+                      }}
+                    >
+                      <div style={{ fontSize: 28, marginBottom: 6 }}>☠️</div>
+                      <div>Game Over</div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div style={mapPanelStyle}>
@@ -945,69 +1043,77 @@ export default function App() {
               }}
             />
 
-			{gameOver ? (
-  <>
-    <h2 style={{ marginTop: 0, position: "relative" }}>Game Over</h2>
+            {gameOver ? (
+              <>
+                <h2 style={{ marginTop: 0, position: "relative" }}>Game Over</h2>
 
-    <div
-      style={{
-        background: "#111827",
-        border: "1px solid #7f1d1d",
-        borderRadius: 14,
-        padding: 18,
-        marginBottom: 14,
-        position: "relative",
-        boxShadow: "0 0 18px rgba(185,28,28,0.18)",
-      }}
-    >
-      <div style={{ fontSize: 44, textAlign: "center", marginBottom: 10 }}>☠️</div>
-      <div style={{ textAlign: "center", fontSize: 20, fontWeight: 800, color: "#fecaca", marginBottom: 8 }}>
-        You have fallen in the dungeon.
-      </div>
-      <p style={{ textAlign: "center", color: "#cbd5e1", margin: "0 0 8px" }}>
-        You reached Floor {floor}.
-      </p>
-      <p style={{ textAlign: "center", color: "#cbd5e1", margin: "0 0 16px" }}>
-        Gold collected: {hero?.gold ?? 0}
-      </p>
-      <div style={{ display: "flex", justifyContent: "center" }}>
-        <ActionButton onClick={() => setScreen("select")}>Play Again</ActionButton>
-      </div>
-    </div>
+                <div
+                  style={{
+                    background: "#111827",
+                    border: "1px solid #7f1d1d",
+                    borderRadius: 14,
+                    padding: 18,
+                    marginBottom: 14,
+                    position: "relative",
+                    boxShadow: "0 0 18px rgba(185,28,28,0.18)",
+                  }}
+                >
+                  <div style={{ fontSize: 44, textAlign: "center", marginBottom: 10 }}>☠️</div>
+                  <div
+                    style={{
+                      textAlign: "center",
+                      fontSize: 20,
+                      fontWeight: 800,
+                      color: "#fecaca",
+                      marginBottom: 8,
+                    }}
+                  >
+                    You have fallen in the dungeon.
+                  </div>
+                  <p style={{ textAlign: "center", color: "#cbd5e1", margin: "0 0 8px" }}>
+                    You reached Floor {floor}.
+                  </p>
+                  <p style={{ textAlign: "center", color: "#cbd5e1", margin: "0 0 16px" }}>
+                    Gold collected: {hero?.gold ?? 0}
+                  </p>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <ActionButton onClick={() => setScreen("select")}>Play Again</ActionButton>
+                  </div>
+                </div>
 
-    <div style={{ position: "relative" }}>
-      <div style={{ fontWeight: 700, marginBottom: 10 }}>Final Log</div>
-      <div
-        ref={logContainerRef}
-        style={{
-          display: "grid",
-          gap: 10,
-          maxHeight: 260,
-          overflowY: "auto",
-          paddingRight: 4,
-        }}
-      >
-        {log.slice(-8).reverse().map((entry, i) => {
-          const logStyle = getLogItemStyle(entry.type);
-          return (
-            <div
-              key={i}
-              style={{
-                background: logStyle.background,
-                border: `1px solid ${logStyle.border}`,
-                color: logStyle.color,
-                borderRadius: 14,
-                padding: 12,
-              }}
-            >
-              {entry.text}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  </>
-			) : battle ? (
+                <div style={{ position: "relative" }}>
+                  <div style={{ fontWeight: 700, marginBottom: 10 }}>Final Log</div>
+                  <div
+                    ref={logContainerRef}
+                    style={{
+                      display: "grid",
+                      gap: 10,
+                      maxHeight: 260,
+                      overflowY: "auto",
+                      paddingRight: 4,
+                    }}
+                  >
+                    {log.slice(-8).reverse().map((entry, i) => {
+                      const logStyle = getLogItemStyle(entry.type);
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            background: logStyle.background,
+                            border: `1px solid ${logStyle.border}`,
+                            color: logStyle.color,
+                            borderRadius: 14,
+                            padding: 12,
+                          }}
+                        >
+                          {entry.text}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : battle ? (
               <>
                 <h2 style={{ marginTop: 0, position: "relative" }}>Battle</h2>
 
@@ -1066,36 +1172,41 @@ export default function App() {
                   </ActionButton>
                 </div>
 
+                <div
+                  style={{
+                    background: "#111827",
+                    border: hero && hero.hp <= hero.maxHp * 0.3 ? "1px solid #ef4444" : "1px solid #374151",
+                    borderRadius: 14,
+                    padding: 14,
+                    marginBottom: 14,
+                    position: "relative",
+                    boxShadow:
+                      hero && hero.hp <= hero.maxHp * 0.3
+                        ? "0 0 14px rgba(239,68,68,0.28)"
+                        : "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      marginBottom: 8,
+                      fontWeight: 700,
+                      color: hero && hero.hp <= hero.maxHp * 0.3 ? "#fecaca" : "#e5e7eb",
+                    }}
+                  >
+                    <strong>
+                      {hero?.emoji} {hero?.name}
+                    </strong>
+                    <span>
+                      {hero?.hp}/{hero?.maxHp} HP
+                    </span>
+                  </div>
+                  <ProgressBar value={hero?.hp || 0} max={hero?.maxHp || 1} />
+                </div>
+
                 <div style={{ position: "relative" }}>
-				<div
-				  style={{
-					background: "#111827",
-					border: hero && hero.hp <= hero.maxHp * 0.3 ? "1px solid #ef4444" : "1px solid #374151",
-					borderRadius: 14,
-					padding: 14,
-					marginBottom: 14,
-					position: "relative",
-					boxShadow:
-					  hero && hero.hp <= hero.maxHp * 0.3
-						? "0 0 14px rgba(239,68,68,0.28)"
-						: "none",
-				  }}
-				>
-				  <div
-					style={{
-					  display: "flex",
-					  justifyContent: "space-between",
-					  gap: 10,
-					  marginBottom: 8,
-					  fontWeight: 700,
-					  color: hero && hero.hp <= hero.maxHp * 0.3 ? "#fecaca" : "#e5e7eb",
-					}}
-				  >
-					<strong>{hero?.emoji} {hero?.name}</strong>
-					<span>{hero?.hp}/{hero?.maxHp} HP</span>
-				  </div>
-				  <ProgressBar value={hero?.hp || 0} max={hero?.maxHp || 1} />
-				</div>
                   <div style={{ fontWeight: 700, marginBottom: 10 }}>Battle Log</div>
                   <div
                     ref={logContainerRef}
@@ -1129,7 +1240,7 @@ export default function App() {
               </>
             ) : (
               <>
-                <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map — Floor {floor}</h2>
+                <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map</h2>
 
                 <div
                   style={{
@@ -1157,7 +1268,7 @@ export default function App() {
                     } else if (cell.type === "start") {
                       content = "🏕️";
                     } else if (cell.type === "exit") {
-                      content = "🚪";
+                      content = "🪜";
                     } else if (cell.type === "monster") {
                       const monster = dungeon.monsters[key(cell.x, cell.y)];
                       content = monster?.isBoss ? "👑" : "👾";
@@ -1220,7 +1331,9 @@ export default function App() {
                   <ActionButton onClick={() => move(1, 0)}>→</ActionButton>
                 </div>
 
-                <p style={{ textAlign: "center", color: "#94a3b8", marginTop: 12 }}>Use arrow keys or WASD too.</p>
+                <p style={{ textAlign: "center", color: "#94a3b8", marginTop: 12 }}>
+                  Use arrow keys or WASD too.
+                </p>
               </>
             )}
           </div>
@@ -1236,52 +1349,51 @@ export default function App() {
             />
 
             <>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}
-                >
-                  <h2 style={{ margin: 0 }}>Adventure Log</h2>
-                  <button style={toggleButtonStyle} onClick={() => setShowLog((v) => !v)}>
-                    {showLog ? "Hide Log" : "Show Log"}
-                  </button>
-                </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <h2 style={{ margin: 0 }}>Adventure Log</h2>
+                <button style={toggleButtonStyle} onClick={() => setShowLog((v) => !v)}>
+                  {showLog ? "Hide" : "Show"}
+                </button>
+              </div>
 
-                {showLog ? (
-                  <div
-                    ref={logContainerRef}
-                    style={{ display: "grid", gap: 10, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}
-                  >
-                    {log
-                      .slice()
-                      .reverse()
-                      .map((entry, i) => {
-                        const logStyle = getLogItemStyle(entry.type);
-                        return (
-                          <div
-                            key={i}
-                            style={{
-                              background: logStyle.background,
-                              border: `1px solid ${logStyle.border}`,
-                              color: logStyle.color,
-                              borderRadius: 14,
-                              padding: 12,
-                            }}
-                          >
-                            {entry.text}
-                          </div>
-                        );
-                      })}
-                  </div>
-                ) : (
-                  <p style={{ color: "#94a3b8", margin: 0 }}>The adventure log is hidden.</p>
-                )}
-              </>
-          
+              {showLog ? (
+                <div
+                  ref={logContainerRef}
+                  style={{ display: "grid", gap: 10, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}
+                >
+                  {log
+                    .slice()
+                    .reverse()
+                    .map((entry, i) => {
+                      const logStyle = getLogItemStyle(entry.type);
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            background: logStyle.background,
+                            border: `1px solid ${logStyle.border}`,
+                            color: logStyle.color,
+                            borderRadius: 14,
+                            padding: 12,
+                          }}
+                        >
+                          {entry.text}
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                <p style={{ color: "#94a3b8", margin: 0 }}>The adventure log is hidden.</p>
+              )}
+            </>
           </div>
         </div>
       </div>
