@@ -829,39 +829,40 @@ export default function App() {
               pointerEvents: "none",
             }}
           />
-          <div
-			  style={{
-				display: "grid",
-				gridTemplateColumns: "1fr auto 1fr",
-				alignItems: "center",
-				gap: 12,
-				marginBottom: showTitleCard ? 6 : 0,
-				position: "relative",
-				zIndex: 1,
-			  }}
-			>
-			  <div />		
-				
-			{showTitleCard && (
-			  <div
-				style={{
-				  fontSize: 16,
-				  letterSpacing: 3,
-				  textTransform: "uppercase",
-				  color: "#cbd5e1",
-				}}
-			  >
-				Explore • Battle • Survive
-			  </div>
-			)}
+         
+		 <div
+		  style={{
+			display: "grid",
+			gridTemplateColumns: "1fr auto 1fr",
+			alignItems: "center",
+			gap: 12,
+			marginBottom: showTitleCard ? 6 : 0,
+			position: "relative",
+			zIndex: 1,
+		  }}
+		>
+		  <div />
 
-			  <div style={{ justifySelf: "end" }}>
-				<button style={toggleButtonStyle} onClick={() => setShowTitleCard((v) => !v)}>
-				  {showTitleCard ? "Hide" : "Show"}
-				</button>
-			  </div>
-			  
-			</div>
+		  <div
+			style={{
+			  fontSize: 16,
+			  letterSpacing: 3,
+			  textTransform: "uppercase",
+			  color: "#cbd5e1",
+			  textAlign: "center",
+			  justifySelf: "center",
+			  visibility: showTitleCard ? "visible" : "hidden",
+			}}
+		  >
+			Explore • Battle • Survive
+		  </div>
+
+		  <div style={{ justifySelf: "end" }}>
+			<button style={toggleButtonStyle} onClick={() => setShowTitleCard((v) => !v)}>
+			  {showTitleCard ? "Hide" : "Show"}
+			</button>
+		  </div>
+		</div>
 
           {showTitleCard && (
             <>
