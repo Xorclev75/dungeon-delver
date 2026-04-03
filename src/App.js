@@ -304,23 +304,24 @@ export default function App() {
     }
 
     if (kind === "trap") {
-      const messages = [
-        "You narrowly avoid a hidden spring trap.",
-        "A dart whistles past your face and embeds itself in the wall.",
-        "You hear a click beneath your foot but leap away just in time.",
-        "A spike shoots up from the floor where you just stood.",
-        "A trap triggers, but luck is on your side today.",
-      ];
-
-      const msg = messages[rand(0, messages.length - 1)];
-
+      const damage = dungeon.traps[k];
+      let defeated = false;
+      setHero((h) => {
+        const nextHp = Math.max(0, h.hp - damage);
+        defeated = nextHp <= 0;
+        return { ...h, hp: nextHp };
+      });
       setDungeon((d) => {
         const next = { ...d, traps: { ...d.traps } };
         delete next.traps[k];
         return next;
       });
-
-      appendLog(msg, "warning");
+      appendLog(`A hidden trap springs! You take ${damage} damage.`, "danger");
+      if (defeated) {
+        setBattle(null);
+        setGameOver(true);
+        appendLog("The trap was fatal. You collapse in the dungeon.", "danger");
+      }
       return;
     }
 
@@ -338,14 +339,114 @@ export default function App() {
       return;
     }
 
-    const flavor = [
-      "The corridor is eerily quiet.",
-      "You hear distant dripping water echo through the halls.",
-      "A cold breeze brushes past you.",
-      "The shadows seem to shift as you move forward.",
-      "Your footsteps echo ominously in the darkness.",
-    ];
-    appendLog(flavor[rand(0, flavor.length - 1)], "info");
+    appendLog("The corridor is eerily quiet.", "info");
+  }, [dungeon, floor]);
+
+  const move = useCallback((dx, dy) => {
+    if (battle || gameOver || !hero) return;
+
+    const nx = clamp(pos.x + dx, 0, GRID_SIZE - 1);
+    const ny = clamp(pos.y + dy, 0, GRID_SIZE - 1);
+
+    if (nx === pos.x && ny === pos.y) return;
+
+    setPos({ x: nx, y: ny });
+    revealTile(nx, ny);
+    triggerTile(nx, ny);
+  }, [pos, battle, gameOver, hero, triggerTile]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (screen !== "game") return;
+      const k = e.key.toLowerCase();
+      if (k === "arrowup" || k === "w") move(0, -1);
+      if (k === "arrowdown" || k === "s") move(0, 1);
+      if (k === "arrowleft" || k === "a") move(-1, 0);
+      if (k === "arrowright" || k === "d") move(1, 0);
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [screen, move]);
+
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = 0;
+    }
+  }, [log, showLog]);
+
+  const heroAttack = (type) => {
+    if (!battle || !hero) return;
+    let workingHero = { ...hero };
+    let workingMonster = { ...battle.monster };
+
+    if (type === "attack") {
+      let dmg = battleDamage(workingHero.attack, workingMonster.defense);
+      let note = "";
+      if (Math.random() < workingHero.critChance) {
+        dmg += 5;
+        note = " Critical hit!";
+      }
+      workingMonster.hp -= dmg;
+      appendLog(`You strike the ${workingMonster.name} for ${dmg} damage.${note}`, "damage");
+    }
+
+    if (type === "special") {
+      let power = 0;
+      if (workingHero.id === "warrior") power = 6;
+      if (workingHero.id === "rogue") power = 8;
+      if (workingHero.id === "mage") power = 10 + workingHero.magic;
+      const dmg = battleDamage(Math.max(workingHero.attack, workingHero.magic), workingMonster.defense, power);
+      workingMonster.hp -= dmg;
+      appendLog(`${workingHero.specialName} deals ${dmg} damage to the ${workingMonster.name}.`, "damage");
+    }
+
+    if (type === "potion") {
+      if (workingHero.potions <= 0) {
+        appendLog("You have no potions left.", "warning");
+        return;
+      }
+      const heal = 14 + workingHero.level * 2;
+      workingHero.hp = Math.min(workingHero.maxHp, workingHero.hp + heal);
+      workingHero.potions -= 1;
+      appendLog(`You drink a potion and restore ${heal} HP.`, "heal");
+    }
+
+    if (type === "heal") {
+      if (workingHero.id !== "mage") return;
+      const heal = 10 + workingHero.magic;
+      workingHero.hp = Math.min(workingHero.maxHp, workingHero.hp + heal);
+      appendLog(`You cast a healing spell and recover ${heal} HP.`, "heal");
+    }
+
+    if (workingMonster.hp <= 0) {
+      const gainedGold = workingMonster.gold;
+      const gainedXp = workingMonster.xp;
+      const leveledHero = checkLevelUp({
+        ...workingHero,
+        gold: workingHero.gold + gainedGold,
+        xp: workingHero.xp + gainedXp,
+      });
+      setHero(leveledHero);
+      setDungeon((d) => {
+        const next = { ...d, monsters: { ...d.monsters } };
+        delete next.monsters[battle.tileKey];
+        return next;
+      });
+      setBattle(null);
+      appendLog(
+        workingMonster.isBoss
+          ? `Boss defeated! ${workingMonster.name} falls. You gain ${gainedXp} XP and ${gainedGold} gold.`
+          : `The ${workingMonster.name} is defeated. You gain ${gainedXp} XP and ${gainedGold} gold.`,
+        "victory"
+      );
+      return;
+    }
+
+    const enemyDamage = Math.max(1, workingMonster.attack - workingHero.defense + rand(0, 2));
+    const dodge = workingHero.id === "rogue" && Math.random() < 0.18;
+    if (dodge) {
+      appendLog(`The ${workingMonster.name} attacks, but you dodge out of the way.`, "info");
     } else {
       workingHero.hp -= enemyDamage;
       appendLog(`The ${workingMonster.name} hits you for ${enemyDamage} damage.`, "enemy");
