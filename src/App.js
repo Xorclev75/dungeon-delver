@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const HEROES = [
   {
@@ -146,7 +146,7 @@ function tileType(x, y, dungeon) {
   if (dungeon.monsters[k]) return "monster";
   if (dungeon.treasures[k]) return "treasure";
   if (dungeon.fountains[k]) return "fountain";
-  if (dungeon.traps?.[k]) return "trap";
+  if (dungeon.traps[k]) return "trap";
   return "empty";
 }
 
@@ -182,7 +182,7 @@ function StatBox({ label, value }) {
   );
 }
 
-function ActionButton({ children, onClick, disabled = false }) {
+function ActionButton({ children, onClick, disabled = false, style = {} }) {
   return (
     <button
       onClick={onClick}
@@ -196,6 +196,7 @@ function ActionButton({ children, onClick, disabled = false }) {
         fontWeight: 700,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
+        ...style,
       }}
     >
       {children}
@@ -215,9 +216,9 @@ export default function App() {
   const [showLog, setShowLog] = useState(true);
   const logContainerRef = useRef(null);
 
-  const appendLog = (text, type = "info") => {
+  const appendLog = useCallback((text, type = "info") => {
     setLog((prev) => [...prev, { text, type }].slice(-40));
-  };
+  }, []);
 
   const startGame = (baseHero) => {
     setHero({
@@ -228,6 +229,8 @@ export default function App() {
       level: 1,
       potions: 2,
       critChance: baseHero.id === "rogue" ? 0.3 : 0.12,
+      specialCooldown: 0,
+      healCooldown: 0,
     });
     setFloor(1);
     setDungeon(createDungeon(1));
@@ -264,96 +267,125 @@ export default function App() {
     return h;
   };
 
-  const triggerTile = useCallback((x, y) => {
-    const k = key(x, y);
-    const kind = tileType(x, y, dungeon);
+  const triggerTile = useCallback(
+    (x, y) => {
+      const k = key(x, y);
+      const kind = tileType(x, y, dungeon);
 
-    if (kind === "monster") {
-      setBattle({ monster: dungeon.monsters[k], tileKey: k });
-      appendLog(
-        dungeon.monsters[k].isBoss
-          ? `Boss encounter! ${dungeon.monsters[k].name} blocks your path!`
-          : `A ${dungeon.monsters[k].name} appears!`,
-        dungeon.monsters[k].isBoss ? "danger" : "enemy"
-      );
-      return;
-    }
-
-    if (kind === "treasure") {
-      const amount = dungeon.treasures[k];
-      setHero((h) => ({ ...h, gold: h.gold + amount }));
-      setDungeon((d) => {
-        const next = { ...d, treasures: { ...d.treasures } };
-        delete next.treasures[k];
-        return next;
-      });
-      appendLog(`You found ${amount} gold in a dusty chest.`, "loot");
-      return;
-    }
-
-    if (kind === "fountain") {
-      const heal = dungeon.fountains[k];
-      setHero((h) => ({ ...h, hp: Math.min(h.maxHp, h.hp + heal) }));
-      setDungeon((d) => {
-        const next = { ...d, fountains: { ...d.fountains } };
-        delete next.fountains[k];
-        return next;
-      });
-      appendLog(`A glowing fountain restores ${heal} HP.`, "heal");
-      return;
-    }
-
-    if (kind === "trap") {
-      const damage = dungeon.traps[k];
-      let defeated = false;
-      setHero((h) => {
-        const nextHp = Math.max(0, h.hp - damage);
-        defeated = nextHp <= 0;
-        return { ...h, hp: nextHp };
-      });
-      setDungeon((d) => {
-        const next = { ...d, traps: { ...d.traps } };
-        delete next.traps[k];
-        return next;
-      });
-      appendLog(`A hidden trap springs! You take ${damage} damage.`, "danger");
-      if (defeated) {
-        setBattle(null);
-        setGameOver(true);
-        appendLog("The trap was fatal. You collapse in the dungeon.", "danger");
+      if (kind === "monster") {
+        setBattle({ monster: dungeon.monsters[k], tileKey: k });
+        appendLog(
+          dungeon.monsters[k].isBoss
+            ? `Boss encounter! ${dungeon.monsters[k].name} blocks your path!`
+            : `A ${dungeon.monsters[k].name} appears!`,
+          dungeon.monsters[k].isBoss ? "danger" : "enemy"
+        );
+        return;
       }
-      return;
-    }
 
-    if (kind === "exit") {
-      const nextFloor = floor + 1;
-      setFloor(nextFloor);
-      setDungeon(createDungeon(nextFloor));
-      setPos(START_POS);
-      appendLog(
-        nextFloor % 5 === 0
-          ? `You descend to Floor ${nextFloor}. A boss lurks in the darkness...`
-          : `You descend to Floor ${nextFloor}. The dungeon grows darker.`,
-        nextFloor % 5 === 0 ? "danger" : "info"
-      );
-      return;
-    }
+      if (kind === "treasure") {
+        const amount = dungeon.treasures[k];
+        setHero((h) => ({ ...h, gold: h.gold + amount }));
+        setDungeon((d) => {
+          const next = { ...d, treasures: { ...d.treasures } };
+          delete next.treasures[k];
+          return next;
+        });
+        appendLog(`You found ${amount} gold in a dusty chest.`, "loot");
+        return;
+      }
 
-    appendLog("The corridor is eerily quiet.", "info");
-  }, [dungeon, floor]);
+      if (kind === "fountain") {
+        const heal = dungeon.fountains[k];
+        setHero((h) => ({ ...h, hp: Math.min(h.maxHp, h.hp + heal) }));
+        setDungeon((d) => {
+          const next = { ...d, fountains: { ...d.fountains } };
+          delete next.fountains[k];
+          return next;
+        });
+        appendLog(`A glowing fountain restores ${heal} HP.`, "heal");
+        return;
+      }
 
-  const move = useCallback((dx, dy) => {
-    if (battle || gameOver || !hero) return;
+      if (kind === "trap") {
+        const trapDodged = Math.random() < (hero?.id === "rogue" ? 0.65 : 0.35);
 
-    const nx = clamp(pos.x + dx, 0, GRID_SIZE - 1);
-    const ny = clamp(pos.y + dy, 0, GRID_SIZE - 1);
+        if (trapDodged) {
+          const dodgeMessages = [
+            "You narrowly avoid a hidden spring trap.",
+            "A dart whistles past your face and embeds itself in the wall.",
+            "You hear a click beneath your foot but leap away just in time.",
+            "A spike shoots up from the floor where you just stood.",
+            "A trap triggers, but luck is on your side today.",
+          ];
+          appendLog(dodgeMessages[rand(0, dodgeMessages.length - 1)], "warning");
+        } else {
+          const damage = dungeon.traps[k];
+          let defeated = false;
 
-    if (nx === pos.x && ny === pos.y) return;
+          setHero((h) => {
+            const nextHp = Math.max(0, h.hp - damage);
+            defeated = nextHp <= 0;
+            return { ...h, hp: nextHp };
+          });
 
-    setPos({ x: nx, y: ny });
-    revealTile(nx, ny);
-    triggerTile(nx, ny);
-  }, [pos, battle, gameOver, hero, triggerTile]);
+          appendLog(`A trap springs and hits you for ${damage} damage!`, "danger");
+
+          if (defeated) {
+            setBattle(null);
+            setGameOver(true);
+            appendLog("The trap proves fatal. You collapse in the dungeon.", "danger");
+          }
+        }
+
+        setDungeon((d) => {
+          const next = { ...d, traps: { ...d.traps } };
+          delete next.traps[k];
+          return next;
+        });
+        return;
+      }
+
+      if (kind === "exit") {
+        const nextFloor = floor + 1;
+        setFloor(nextFloor);
+        setDungeon(createDungeon(nextFloor));
+        setPos(START_POS);
+        appendLog(
+          nextFloor % 5 === 0
+            ? `You descend to Floor ${nextFloor}. A boss lurks in the darkness...`
+            : `You descend to Floor ${nextFloor}. The dungeon grows darker.`,
+          nextFloor % 5 === 0 ? "danger" : "info"
+        );
+        return;
+      }
+
+      const flavor = [
+        "The corridor is eerily quiet.",
+        "You hear distant dripping water echo through the halls.",
+        "A cold breeze brushes past you.",
+        "The shadows seem to shift as you move forward.",
+        "Your footsteps echo ominously in the darkness.",
+      ];
+      appendLog(flavor[rand(0, flavor.length - 1)], "info");
+    },
+    [appendLog, dungeon, floor, hero]
+  );
+
+  const move = useCallback(
+    (dx, dy) => {
+      if (battle || gameOver || !hero) return;
+
+      const nx = clamp(pos.x + dx, 0, GRID_SIZE - 1);
+      const ny = clamp(pos.y + dy, 0, GRID_SIZE - 1);
+      if (nx === pos.x && ny === pos.y) return;
+
+      setPos({ x: nx, y: ny });
+      revealTile(nx, ny);
+      triggerTile(nx, ny);
+    },
+    [battle, gameOver, hero, pos, triggerTile]
+  );
 
   useEffect(() => {
     const onKey = (e) => {
@@ -367,7 +399,7 @@ export default function App() {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [screen, move]);
+  }, [move, screen]);
 
   useEffect(() => {
     if (logContainerRef.current) {
@@ -377,6 +409,7 @@ export default function App() {
 
   const heroAttack = (type) => {
     if (!battle || !hero) return;
+
     let workingHero = { ...hero };
     let workingMonster = { ...battle.monster };
 
@@ -392,12 +425,19 @@ export default function App() {
     }
 
     if (type === "special") {
+      if (workingHero.specialCooldown > 0) {
+        appendLog(`Your special is on cooldown (${workingHero.specialCooldown} turns).`, "warning");
+        return;
+      }
+
       let power = 0;
       if (workingHero.id === "warrior") power = 6;
       if (workingHero.id === "rogue") power = 8;
       if (workingHero.id === "mage") power = 10 + workingHero.magic;
+
       const dmg = battleDamage(Math.max(workingHero.attack, workingHero.magic), workingMonster.defense, power);
       workingMonster.hp -= dmg;
+      workingHero.specialCooldown = 3;
       appendLog(`${workingHero.specialName} deals ${dmg} damage to the ${workingMonster.name}.`, "damage");
     }
 
@@ -414,8 +454,13 @@ export default function App() {
 
     if (type === "heal") {
       if (workingHero.id !== "mage") return;
+      if (workingHero.healCooldown > 0) {
+        appendLog(`Heal is on cooldown (${workingHero.healCooldown} turns).`, "warning");
+        return;
+      }
       const heal = 10 + workingHero.magic;
       workingHero.hp = Math.min(workingHero.maxHp, workingHero.hp + heal);
+      workingHero.healCooldown = 3;
       appendLog(`You cast a healing spell and recover ${heal} HP.`, "heal");
     }
 
@@ -443,10 +488,21 @@ export default function App() {
       return;
     }
 
+    if (workingHero.specialCooldown > 0) workingHero.specialCooldown -= 1;
+    if (workingHero.healCooldown > 0) workingHero.healCooldown -= 1;
+
     const enemyDamage = Math.max(1, workingMonster.attack - workingHero.defense + rand(0, 2));
     const dodge = workingHero.id === "rogue" && Math.random() < 0.18;
+
     if (dodge) {
-      appendLog(`The ${workingMonster.name} attacks, but you dodge out of the way.`, "info");
+      const dodgeFlavor = [
+        "The monster lunges, but you slip out of reach just in time.",
+        "A claw slices through the air where you stood a moment ago.",
+        "You twist aside and the attack misses by inches.",
+        "The blow whistles past as you dodge into the shadows.",
+        `The ${workingMonster.name} attacks, but you dodge out of the way.`,
+      ];
+      appendLog(dodgeFlavor[rand(0, dodgeFlavor.length - 1)], "info");
     } else {
       workingHero.hp -= enemyDamage;
       appendLog(`The ${workingMonster.name} hits you for ${enemyDamage} damage.`, "enemy");
@@ -463,6 +519,50 @@ export default function App() {
 
     setHero(workingHero);
     setBattle({ ...battle, monster: workingMonster });
+  };
+
+  const healOutsideBattle = (method) => {
+    if (!hero || battle || gameOver) return;
+
+    if (method === "potion") {
+      if (hero.potions <= 0) {
+        appendLog("You have no potions left.", "warning");
+        return;
+      }
+      if (hero.hp >= hero.maxHp) {
+        appendLog("You are already at full health.", "info");
+        return;
+      }
+
+      const heal = 14 + hero.level * 2;
+      setHero((h) => ({
+        ...h,
+        hp: Math.min(h.maxHp, h.hp + heal),
+        potions: h.potions - 1,
+      }));
+      appendLog(`You drink a potion and restore ${heal} HP.`, "heal");
+      return;
+    }
+
+    if (method === "heal") {
+      if (hero.id !== "mage") return;
+      if (hero.healCooldown > 0) {
+        appendLog(`Heal is on cooldown (${hero.healCooldown} turns).`, "warning");
+        return;
+      }
+      if (hero.hp >= hero.maxHp) {
+        appendLog("You are already at full health.", "info");
+        return;
+      }
+
+      const heal = 10 + hero.magic;
+      setHero((h) => ({
+        ...h,
+        hp: Math.min(h.maxHp, h.hp + heal),
+        healCooldown: 3,
+      }));
+      appendLog(`You cast a healing spell and recover ${heal} HP.`, "heal");
+    }
   };
 
   const buyPotion = () => {
@@ -499,7 +599,7 @@ export default function App() {
     backgroundSize: "auto, auto, auto, 38px 38px, 38px 38px, 100% 100%",
     color: "#e5e7eb",
     padding: 20,
-    fontFamily: 'Trebuchet MS, Arial, sans-serif',
+    fontFamily: "Trebuchet MS, Arial, sans-serif",
     position: "relative",
   };
 
@@ -544,6 +644,11 @@ export default function App() {
     cursor: "pointer",
   };
 
+  const buyButtonStyle = { background: "#b45309", color: "white" };
+  const usePotionButtonStyle = { background: "#047857", color: "white" };
+  const healButtonStyle = { background: "#7c3aed", color: "white" };
+  const newHeroButtonStyle = { background: "#1d4ed8", color: "white" };
+
   const getLogItemStyle = (type) => {
     const map = {
       info: { background: "#111827", border: "#374151", color: "#e5e7eb" },
@@ -559,11 +664,48 @@ export default function App() {
     return map[type] || map.info;
   };
 
+  const renderTitleRow = (titleSize, imageSize, marginBottom = 10) => (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        flexWrap: "wrap",
+        marginBottom,
+        position: "relative",
+      }}
+    >
+      <img
+        src="/title.png"
+        alt="Dungeon Delver title art"
+        style={{
+          width: imageSize,
+          height: imageSize,
+          objectFit: "contain",
+          filter: "drop-shadow(0 0 12px rgba(245,158,11,0.5))",
+        }}
+      />
+      <h1
+        style={{
+          margin: 0,
+          fontSize: titleSize,
+          fontWeight: 900,
+          color: "#f8fafc",
+          letterSpacing: 1,
+          textShadow: "0 0 10px rgba(245,158,11,0.22), 0 2px 16px rgba(59,130,246,0.28)",
+        }}
+      >
+        Dungeon Delver
+      </h1>
+    </div>
+  );
+
   if (screen === "select") {
     return (
       <div style={pageStyle}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <h1 style={{ textAlign: "center", fontSize: 48, marginBottom: 10 }}>Dungeon Delver</h1>
+          {renderTitleRow(48, 68)}
           <p style={{ textAlign: "center", color: "#cbd5e1", maxWidth: 700, margin: "0 auto 30px" }}>
             Choose your hero, explore a dangerous dungeon, collect treasure, and survive turn-based battles.
           </p>
@@ -580,7 +722,7 @@ export default function App() {
                   <StatBox label="Defense" value={h.defense} />
                   <StatBox label="Magic" value={h.magic} />
                 </div>
-                <ActionButton onClick={() => startGame(h)}>Begin as {h.name}</ActionButton>
+                <ActionButton onClick={() => startGame(h)}>{`Begin as ${h.name}`}</ActionButton>
               </div>
             ))}
           </div>
@@ -608,29 +750,33 @@ export default function App() {
           <div style={{ fontSize: 16, letterSpacing: 3, textTransform: "uppercase", color: "#cbd5e1", marginBottom: 6, position: "relative" }}>
             Explore • Battle • Survive
           </div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "clamp(2rem, 5vw, 3.5rem)",
-              fontWeight: 900,
-              color: "#f8fafc",
-              letterSpacing: 1,
-              textShadow: "0 0 10px rgba(245,158,11,0.22), 0 2px 16px rgba(59,130,246,0.28)",
-              position: "relative",
-            }}
-          >
-            Dungeon Delver
-          </h1>
+          {renderTitleRow("clamp(2rem, 5vw, 3.5rem)", 72, 0)}
           <div style={{ marginTop: 8, color: "#e2e8f0", fontSize: 16, position: "relative" }}>
             Descend into the depths and see how far your hero can go.
           </div>
         </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
           <div style={statsPanelStyle}>
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 45%)", pointerEvents: "none" }} />
             <h2 style={{ marginTop: 0, position: "relative" }}>{hero?.name} — Floor {floor}</h2>
             <div style={{ marginBottom: 14 }}>
-              <div style={{ marginBottom: 6 }}>HP: {hero?.hp}/{hero?.maxHp}</div>
+              <div
+                style={{
+                  marginBottom: 6,
+                  fontWeight: hero && hero.hp <= hero.maxHp * 0.3 ? 900 : 600,
+                  color: hero && hero.hp <= hero.maxHp * 0.3 ? "#fecaca" : "inherit",
+                  background: hero && hero.hp <= hero.maxHp * 0.3 ? "linear-gradient(90deg, rgba(127,29,29,0.95), rgba(69,10,10,0.9))" : "transparent",
+                  border: hero && hero.hp <= hero.maxHp * 0.3 ? "1px solid #ef4444" : "none",
+                  borderRadius: hero && hero.hp <= hero.maxHp * 0.3 ? 12 : 0,
+                  padding: hero && hero.hp <= hero.maxHp * 0.3 ? "10px 12px" : 0,
+                  boxShadow: hero && hero.hp <= hero.maxHp * 0.3 ? "0 0 18px rgba(239,68,68,0.45), inset 0 0 12px rgba(127,29,29,0.6)" : "none",
+                  textTransform: hero && hero.hp <= hero.maxHp * 0.3 ? "uppercase" : "none",
+                  letterSpacing: hero && hero.hp <= hero.maxHp * 0.3 ? 1 : 0,
+                }}
+              >
+                {hero && hero.hp <= hero.maxHp * 0.3 ? `⚠ LOW HP: ${hero.hp}/${hero.maxHp}` : `HP: ${hero?.hp}/${hero?.maxHp}`}
+              </div>
               <ProgressBar value={hero?.hp || 0} max={hero?.maxHp || 1} />
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -646,8 +792,14 @@ export default function App() {
               <StatBox label="Potions" value={hero?.potions} />
             </div>
             <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-              <ActionButton onClick={buyPotion}>Buy Potion (20 gold)</ActionButton>
-              <ActionButton onClick={() => setScreen("select")}>Choose New Hero</ActionButton>
+              <ActionButton onClick={buyPotion} style={buyButtonStyle}>Buy Potion (20 gold)</ActionButton>
+              <ActionButton onClick={() => healOutsideBattle("potion")} disabled={battle || gameOver} style={usePotionButtonStyle}>Use Potion</ActionButton>
+              {hero?.id === "mage" && (
+                <ActionButton onClick={() => healOutsideBattle("heal")} disabled={battle || gameOver || hero?.healCooldown > 0} style={healButtonStyle}>
+                  Cast Heal {hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
+                </ActionButton>
+              )}
+              <ActionButton onClick={() => setScreen("select")} style={newHeroButtonStyle}>Choose New Hero</ActionButton>
             </div>
           </div>
 
@@ -659,22 +811,29 @@ export default function App() {
                 const isPlayer = cell.x === pos.x && cell.y === pos.y;
                 const discovered = cell.discovered;
                 let content = "";
+
                 if (isPlayer) {
                   if (hero?.id === "warrior") content = "⚔️";
                   else if (hero?.id === "rogue") content = "🗡️";
                   else content = "🔮";
-                }
-                else if (!discovered) content = "";
-                else if (cell.type === "start") content = "🏕️";
-                else if (cell.type === "exit") content = "🚪";
-                else if (cell.type === "monster") {
+                } else if (!discovered) {
+                  content = "";
+                } else if (cell.type === "start") {
+                  content = "🏕️";
+                } else if (cell.type === "exit") {
+                  content = "🚪";
+                } else if (cell.type === "monster") {
                   const monster = dungeon.monsters[key(cell.x, cell.y)];
                   content = monster?.isBoss ? "👑" : "👾";
+                } else if (cell.type === "treasure") {
+                  content = "💰";
+                } else if (cell.type === "fountain") {
+                  content = "💧";
+                } else if (cell.type === "trap") {
+                  content = "🪤";
+                } else {
+                  content = "·";
                 }
-                else if (cell.type === "treasure") content = "💰";
-                else if (cell.type === "fountain") content = "💧";
-                else if (cell.type === "trap") content = "🪤";
-                else content = "·";
 
                 return (
                   <div
@@ -726,9 +885,13 @@ export default function App() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
                   <ActionButton onClick={() => heroAttack("attack")}>Attack</ActionButton>
-                  <ActionButton onClick={() => heroAttack("special")}>{hero?.specialName}</ActionButton>
+                  <ActionButton onClick={() => heroAttack("special")} disabled={hero?.specialCooldown > 0}>
+                    {hero?.specialName} {hero?.specialCooldown > 0 ? `(${hero.specialCooldown})` : ""}
+                  </ActionButton>
                   <ActionButton onClick={() => heroAttack("potion")}>Use Potion</ActionButton>
-                  <ActionButton onClick={() => heroAttack("heal")} disabled={hero?.id !== "mage"}>Cast Heal</ActionButton>
+                  <ActionButton onClick={() => heroAttack("heal")} disabled={hero?.id !== "mage" || hero?.healCooldown > 0} style={healButtonStyle}>
+                    Cast Heal {hero?.id === "mage" && hero?.healCooldown > 0 ? `(${hero.healCooldown})` : ""}
+                  </ActionButton>
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, marginBottom: 10 }}>Battle Log</div>
