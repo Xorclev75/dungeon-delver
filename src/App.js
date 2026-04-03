@@ -1240,7 +1240,7 @@ export default function App() {
               </>
             ) : (
               <>
-                <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map</h2>
+                <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map — Floor {floor}</h2>
 
                 <div
                   style={{
