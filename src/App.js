@@ -353,7 +353,7 @@ export default function App() {
     setPos({ x: nx, y: ny });
     revealTile(nx, ny);
     triggerTile(nx, ny);
-  }, [pos, battle, gameOver, hero, dungeon, triggerTile]);
+  }, [pos, battle, gameOver, hero, triggerTile]);
 
   useEffect(() => {
     const onKey = (e) => {
