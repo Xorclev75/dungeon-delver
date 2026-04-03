@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 
 const HEROES = [
   {
@@ -342,15 +342,18 @@ export default function App() {
     appendLog("The corridor is eerily quiet.", "info");
   };
 
-  const move = (dx, dy) => {
+  const move = useCallback((dx, dy) => {
     if (battle || gameOver || !hero) return;
+
     const nx = clamp(pos.x + dx, 0, GRID_SIZE - 1);
     const ny = clamp(pos.y + dy, 0, GRID_SIZE - 1);
+
     if (nx === pos.x && ny === pos.y) return;
+
     setPos({ x: nx, y: ny });
     revealTile(nx, ny);
     triggerTile(nx, ny);
-  };
+  }, [pos, battle, gameOver, hero, dungeon]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -364,7 +367,7 @@ export default function App() {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [screen, pos, battle, gameOver, hero, dungeon]);
+  }, [screen, move]);
 
   useEffect(() => {
     if (logContainerRef.current) {
