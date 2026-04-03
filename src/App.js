@@ -700,6 +700,15 @@ export default function App() {
       </h1>
     </div>
   );
+  // glow gauge
+  const hpPercent = hero ? hero.hp / hero.maxHp : 1;
+
+	let glowColor = "rgba(34,197,94,0.9)";
+	if (hpPercent <= 0.3) {
+	  glowColor = "rgba(239,68,68,0.95)";
+	} else if (hpPercent <= 0.6) {
+	  glowColor = "rgba(249,115,22,0.95)";
+	}
 
   if (screen === "select") {
     return (
@@ -709,27 +718,36 @@ export default function App() {
           <p style={{ textAlign: "center", color: "#cbd5e1", maxWidth: 700, margin: "0 auto 30px" }}>
             Choose your hero, explore a dangerous dungeon, collect treasure, and survive turn-based battles.
           </p>
-
+			
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
-            {HEROES.map((h) => (
-              <div key={h.id} style={panelStyle}>
-                <div style={{ fontSize: 42 }}>{h.emoji}</div>
-                <h2 style={{ margin: "10px 0" }}>{h.name}</h2>
-                <p style={{ color: "#cbd5e1", minHeight: 48 }}>{h.description}</p>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, margin: "16px 0" }}>
-                  <StatBox label="HP" value={h.maxHp} />
-                  <StatBox label="Attack" value={h.attack} />
-                  <StatBox label="Defense" value={h.defense} />
-                  <StatBox label="Magic" value={h.magic} />
-                </div>
-                <ActionButton onClick={() => startGame(h)}>{`Begin as ${h.name}`}</ActionButton>
-              </div>
-            ))}
-          </div>
+		  {HEROES.map((h) => (
+			<div key={h.id} style={panelStyle}>
+			  <div
+				style={{
+				  fontSize: 42,
+				  transition: "all 0.3s ease",
+				  filter: "drop-shadow(0 0 8px rgba(34,197,94,0.9)) drop-shadow(0 0 18px rgba(34,197,94,0.9))",
+				}}
+			  >
+				{h.emoji}
+			  </div>
+			  <h2 style={{ margin: "10px 0" }}>{h.name}</h2>
+			  <p style={{ color: "#cbd5e1", minHeight: 48 }}>{h.description}</p>
+			  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, margin: "16px 0" }}>
+				<StatBox label="HP" value={h.maxHp} />
+				<StatBox label="Attack" value={h.attack} />
+				<StatBox label="Defense" value={h.defense} />
+				<StatBox label="Magic" value={h.magic} />
+			  </div>
+			  <ActionButton onClick={() => startGame(h)}>{`Begin as ${h.name}`}</ActionButton>
+			</div>
+		  ))}
+		</div>
         </div>
       </div>
     );
-  }
+  }  
+
 
   return (
     <div style={pageStyle}>
@@ -759,7 +777,28 @@ export default function App() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
           <div style={statsPanelStyle}>
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 45%)", pointerEvents: "none" }} />
-            <h2 style={{ marginTop: 0, position: "relative" }}>{hero?.name} — Floor {floor}</h2>
+            
+			<div
+			  style={{
+				display: "flex",
+				alignItems: "center",
+				gap: 12,
+				marginTop: 0,
+				marginBottom: 14,
+				position: "relative",
+			  }}
+			>
+			  <div
+				style={{
+				  fontSize: 42,
+				  transition: "all 0.3s ease",
+				  filter: `drop-shadow(0 0 8px ${glowColor}) drop-shadow(0 0 18px ${glowColor})`,
+				}}
+			  >
+				{hero?.emoji}
+			  </div>
+			  <h2 style={{ margin: 0 }}>{hero?.name} — Floor {floor}</h2>
+			</div>
             <div style={{ marginBottom: 14 }}>
               <div
                 style={{
@@ -806,63 +845,84 @@ export default function App() {
           <div style={mapPanelStyle}>
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at top center, rgba(245,158,11,0.12), transparent 50%)", pointerEvents: "none" }} />
             <h2 style={{ marginTop: 0, position: "relative" }}>Dungeon Map</h2>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`, gap: 6, width: "100%", maxWidth: 500, margin: "0 auto 20px", alignItems: "stretch" }}>
+			<div
+				  style={{
+					display: "grid",
+					gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
+					gap: 6,
+					width: "100%",
+					maxWidth: 500,
+					margin: "0 auto 20px",
+					alignItems: "stretch",
+					boxSizing: "border-box",
+				  }}
+				>
               {visibleGrid.map((cell) => {
-          const isPlayer = cell.x === pos.x && cell.y === pos.y;
-          const discovered = cell.discovered;
-          const isLowHP = hero && hero.hp <= hero.maxHp * 0.3;
-          let content = "";
+                const isPlayer = cell.x === pos.x && cell.y === pos.y;
+                const discovered = cell.discovered;
+                let content = "";
 
-          if (isPlayer) {
-            if (hero?.id === "warrior") content = "⚔️";
-            else if (hero?.id === "rogue") content = "🗡️";
-            else content = "🔮";
-          } else if (!discovered) content = "";
-          else if (cell.type === "start") content = "🏕️";
-          else if (cell.type === "exit") content = "🚪";
-          else if (cell.type === "monster") {
-            const monster = dungeon.monsters[key(cell.x, cell.y)];
-            content = monster?.isBoss ? "👑" : "👾";
-          } else if (cell.type === "treasure") content = "💰";
-          else if (cell.type === "fountain") content = "💧";
-          else if (cell.type === "trap") content = "🪤";
-          else content = "·";
+                if (isPlayer) {
+                  if (hero?.id === "warrior") content = "⚔️";
+                  else if (hero?.id === "rogue") content = "🗡️";
+                  else content = "🔮";
+                } else if (!discovered) {
+                  content = "";
+                } else if (cell.type === "start") {
+                  content = "🏕️";
+                } else if (cell.type === "exit") {
+                  content = "🚪";
+                } else if (cell.type === "monster") {
+                  const monster = dungeon.monsters[key(cell.x, cell.y)];
+                  content = monster?.isBoss ? "👑" : "👾";
+                } else if (cell.type === "treasure") {
+                  content = "💰";
+                } else if (cell.type === "fountain") {
+                  content = "💧";
+                } else if (cell.type === "trap") {
+                  content = "🪤";
+                } else {
+                  content = "·";
+                }
 
-          return (
-            <div
-              key={`${cell.x}-${cell.y}`}
-              style={{
-                aspectRatio: "1 / 1",
-                borderRadius: 14,
-                border: isPlayer
-                  ? isLowHP
-                    ? "2px solid #ef4444"
-                    : "2px solid #f59e0b"
-                  : "1px solid #475569",
-                background: isPlayer
-                  ? isLowHP
-                    ? "linear-gradient(180deg, #7f1d1d, #450a0a)"
-                    : "linear-gradient(180deg, #78350f, #451a03)"
-                  : discovered
-                  ? "linear-gradient(180deg, #334155, #1e293b)"
-                  : "linear-gradient(180deg, #020617, #0f172a)",
-                boxShadow: isPlayer
-                  ? isLowHP
-                    ? "0 0 18px rgba(239,68,68,0.9), 0 0 35px rgba(127,29,29,0.8)"
-                    : "0 0 16px rgba(245,158,11,0.28)"
-                  : "inset 0 1px 0 rgba(255,255,255,0.04)",
-                animation: isPlayer && isLowHP ? "pulseDanger 1.2s infinite" : "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 24,
-                minHeight: 38,
-              }}
-            >
-              {content}
-            </div>
-          );
-        })}
+                return (
+                  <div
+					  key={`${cell.x}-${cell.y}`}
+					  style={{
+						aspectRatio: "1 / 1",
+						width: "100%",
+						minWidth: 0,
+						boxSizing: "border-box",
+						borderRadius: 14,
+						border: isPlayer ? `2px solid ${glowColor}` : "1px solid rgba(255,255,255,0.08)",
+						background: isPlayer
+						  ? "linear-gradient(180deg, #1f2937, #111827)"
+						  : discovered
+						  ? "linear-gradient(180deg, #334155, #1e293b)"
+						  : "linear-gradient(180deg, #020617, #0f172a)",
+						boxShadow: isPlayer ? `0 0 16px ${glowColor}` : "inset 0 1px 0 rgba(255,255,255,0.04)",
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "center",
+						fontSize: "clamp(14px, 3vw, 24px)",
+						overflow: "hidden",
+					  }}
+					>
+					  <span
+						style={
+						  isPlayer
+							? {
+								filter: `drop-shadow(0 0 8px ${glowColor})`,
+								transition: "all 0.3s ease",
+							  }
+							: undefined
+						}
+					  >
+						{content}
+					  </span>
+					</div>
+								);
+              })}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "60px 60px 60px", gap: 8, justifyContent: "center" }}>
               <div />
